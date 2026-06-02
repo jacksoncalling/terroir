@@ -25,6 +25,8 @@ import type {
   MergeGroup,
   CrossDocRelationship,
   AttractorReassignment,
+  CompactProjectPayload,
+  CommonsSynthesisResult,
 } from "@/types";
 import { v4 as uuidv4 } from "uuid";
 import { HUB_RELATIONSHIP_TYPE } from "@/types";
@@ -1171,6 +1173,129 @@ export async function deduplicateSignals(
     console.warn(`[dedup] Dropped ${all.length - valid.length} invalid merge group(s) from Gemini response`);
   }
   return valid;
+}
+
+// ── Cross-project commons synthesis ─────────────────────────────────────────
+//
+// Compares shared nodes, signals, and tensions across two or more projects to
+// surface mutual reachability — where organisational ontologies touch, diverge,
+// or leave gaps. Design principle (Bonnitta Roy): map edges of contact, don't
+// merge ontologies.
+//
+// Thinking disabled — same rationale as extraction (faster, consistent JSON).
+
+function buildCommonsSynthesisPrompt(
+  projects: CompactProjectPayload[]
+): string {
+  const projectSections = projects
+    .map((p) => {
+      const nodeList = p.nodes.length > 0
+        ? p.nodes.map((n) => `    - "${n.label}" [${n.type}]: ${n.description}`).join("\n")
+        : "    (no shared nodes)";
+      const signalList = p.signals.length > 0
+        ? p.signals.map((s) => `    - [${s.direction}] "${s.label}" (strength: ${s.strength}/5${s.thresholdProximity != null ? `, threshold: ${s.thresholdProximity}/5` : ""})`).join("\n")
+        : "    (no shared signals)";
+      const tensionList = p.tensions.length > 0
+        ? p.tensions.map((t) => `    - ${t.description}`).join("\n")
+        : "    (no tensions)";
+
+      return `--- PROJECT: "${p.projectName}" (${p.projectId}) ---
+  Shared nodes (${p.nodes.length}):
+${nodeList}
+  Shared signals (${p.signals.length}):
+${signalList}
+  Tensions (${p.tensions.length}):
+${tensionList}`;
+    })
+    .join("\n\n");
+
+  return `You are comparing organisational knowledge graphs from multiple teams or projects within TERROIR — an organisational listening tool.
+
+The goal is MUTUAL REACHABILITY, not consensus. Do not merge ontologies. Map the edges where they touch.
+
+You are given the shared nodes, evaluative signals, and tensions from ${projects.length} projects. Find:
+
+1. CONVERGENCE — nodes across projects that represent the same concept (even if labeled differently). Return pairs with a similarity rationale. Only flag genuine semantic overlap, not superficial keyword matches.
+
+2. CONTACT_POINTS — tensions that appear (by theme, not exact match) in multiple projects. These are shared organisational pain worth surfacing.
+
+3. EVALUATIVE_DIVERGENCE — signals with the same or similar label but meaningfully different intensity (≥2 points difference) or opposite direction. These indicate different evaluative stances on the same thing.
+
+4. REACHABILITY_GAPS — nodes in one project that have no semantic equivalent in another. These mark where one team can think something the other cannot yet. Only flag gaps that matter — concepts central to one project's ontology, not peripheral details.
+
+Hard limits:
+- Maximum 10 convergence items, 5 contact points, 5 divergence items, 10 reachability gaps.
+- Every item must reference specific project names (not IDs).
+- Do not fabricate nodes or signals that don't exist in the data above.
+
+PROJECTS TO COMPARE:
+${projectSections}
+
+Respond with valid JSON only — no markdown, no code blocks:
+{
+  "convergence": [
+    { "label": "canonical concept name", "projects": ["project name", ...], "rationale": "why these are the same concept" }
+  ],
+  "contact_points": [
+    { "theme": "shared tension theme", "projects": ["project name", ...], "description": "how this tension manifests across projects" }
+  ],
+  "evaluative_divergence": [
+    { "signal": "signal label or theme", "divergence": "how the evaluative stance differs across projects" }
+  ],
+  "reachability_gaps": [
+    { "node": "concept label", "present_in": "project name", "absent_from": "project name" }
+  ]
+}`;
+}
+
+/**
+ * Runs cross-project commons synthesis via Gemini 2.5 Flash.
+ *
+ * Compares shared nodes, signals, and tensions across projects to surface
+ * convergence, contact points, evaluative divergence, and reachability gaps.
+ *
+ * @param projects  Compact payloads of shared data from each project
+ * @returns         Four-quadrant commons synthesis result
+ */
+export async function synthesizeAcrossProjects(
+  projects: CompactProjectPayload[]
+): Promise<CommonsSynthesisResult> {
+  if (projects.length < 2) {
+    throw new Error("[commons] Need at least 2 projects to compare");
+  }
+
+  const prompt = buildCommonsSynthesisPrompt(projects);
+  const raw = await callGemini(prompt, 16384, false, true);
+  const rawJson = stripJsonFences(raw);
+
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(rawJson);
+  } catch {
+    console.error("[commons] Gemini returned unparseable JSON:", rawJson.slice(0, 300));
+    return { convergence: [], contactPoints: [], evaluativeDivergence: [], reachabilityGaps: [] };
+  }
+
+  const projectNames = new Set(projects.map((p) => p.projectName));
+
+  const convergence = (parsed.convergence as CommonsSynthesisResult["convergence"] ?? [])
+    .filter((c) => c.label && c.projects?.length >= 2 && c.rationale);
+
+  const contactPoints = (parsed.contact_points as CommonsSynthesisResult["contactPoints"] ?? [])
+    .filter((c) => c.theme && c.projects?.length >= 2);
+
+  const evaluativeDivergence = (parsed.evaluative_divergence as CommonsSynthesisResult["evaluativeDivergence"] ?? [])
+    .filter((d) => d.signal && d.divergence);
+
+  // Gemini returns snake_case keys (present_in, absent_from) per the prompt schema.
+  // Map to camelCase to match CommonsSynthesisResult.
+  const rawGaps = (parsed.reachability_gaps as { node: string; present_in: string; absent_from: string }[] ?? []);
+  const reachabilityGaps: CommonsSynthesisResult["reachabilityGaps"] = rawGaps
+    .filter((g) => g.node && g.present_in && g.absent_from
+      && (projectNames.has(g.present_in) || projectNames.has(g.absent_from)))
+    .map((g) => ({ node: g.node, presentIn: g.present_in, absentFrom: g.absent_from }));
+
+  return { convergence, contactPoints, evaluativeDivergence, reachabilityGaps };
 }
 
 /**

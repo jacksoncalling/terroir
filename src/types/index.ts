@@ -44,6 +44,9 @@ export interface AttractorConfig {
 /** Relationship type constant for hub membership edges */
 export const HUB_RELATIONSHIP_TYPE = 'belongs_to_hub';
 
+export type SessionType = 'inquiry' | 'extraction' | 'synthesis' | 'classification' | 'manual';
+export type SessionAgent = 'haiku' | 'sonnet' | 'gemini' | 'manual';
+
 export interface GraphNode {
   id: string;
   label: string;
@@ -54,6 +57,8 @@ export interface GraphNode {
   position: { x: number; y: number };
   properties?: Record<string, string>;
   readonly?: boolean; // true for nodes inherited from parent project
+  sourceType?: SessionAgent; // provenance: who created this node?
+  sharingScope?: SharingScope;
 }
 
 export interface Relationship {
@@ -108,6 +113,7 @@ export interface EvaluativeSignal {
   reflectedAt?: string | null;
   /** Optional freetext note from the consultant */
   userNote?: string | null;
+  sharingScope?: SharingScope;
 }
 
 export interface GraphState {
@@ -274,6 +280,25 @@ export interface IntegrationResult {
   entitiesMerged: number;      // non-survivor nodes deleted
   relationshipsAdded: number;
   attractorsReassigned: number;
+}
+
+// ── Cross-project commons synthesis ──────────────────────────────────────────
+
+export type SharingScope = 'private' | 'team' | 'division' | 'company';
+
+export interface CompactProjectPayload {
+  projectId: string;
+  projectName: string;
+  nodes: { id: string; label: string; type: string; description: string }[];
+  signals: { label: string; direction: string; strength: number; thresholdProximity: number | null }[];
+  tensions: { label: string; description: string }[];
+}
+
+export interface CommonsSynthesisResult {
+  convergence: { label: string; projects: string[]; rationale: string }[];
+  contactPoints: { theme: string; projects: string[]; description: string }[];
+  evaluativeDivergence: { signal: string; divergence: string }[];
+  reachabilityGaps: { node: string; presentIn: string; absentFrom: string }[];
 }
 
 /** Full output from the Gemini cross-source synthesis pass */

@@ -466,7 +466,7 @@ export default function Home() {
   );
 
   const handleUpdateNode = useCallback(
-    (id: string, updates: Partial<Pick<GraphNode, "label" | "description" | "type" | "attractor">>) => {
+    (id: string, updates: Partial<Pick<GraphNode, "label" | "description" | "type" | "attractor" | "sharingScope">>) => {
       // If attractor changed, pass it as newHubId so belongs_to_hub relationship is updated
       const newHubId = updates.attractor;
       const nodeUpdates = { ...updates };
@@ -577,7 +577,7 @@ export default function Home() {
   // The API call (fire-and-forget) runs in parallel inside Chat.tsx, so this
   // just keeps graphState — and therefore the debounced saveOntology — in sync.
   const handleSignalReflect = useCallback(
-    (signalId: string, updates: Partial<{ relevanceScore: number | null; intensityScore: number | null; reflectedAt: string | null; userNote: string | null }>) => {
+    (signalId: string, updates: Partial<{ relevanceScore: number | null; intensityScore: number | null; reflectedAt: string | null; userNote: string | null; sharingScope: import("@/types").SharingScope }>) => {
       setGraphState((prev) => ({
         ...prev,
         evaluativeSignals: prev.evaluativeSignals.map((s) =>

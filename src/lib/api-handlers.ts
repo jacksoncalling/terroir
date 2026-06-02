@@ -17,13 +17,14 @@ import {
   saveOntology,
   searchChunks,
   getProjectDocuments,
+  getSharedProjectPayload,
   logSession,
 } from "./supabase";
 import { buildProjectBundle } from "./export";
-import { classifyDocuments, extractOntologyWithGemini, runGeminiSynthesis } from "./gemini";
+import { classifyDocuments, extractOntologyWithGemini, runGeminiSynthesis, synthesizeAcrossProjects } from "./gemini";
 import { embedText } from "./embeddings";
 import { assertScope, assertProject, type AuthContext } from "./api-auth";
-import type { ProjectBrief, GraphNode, EvaluativeSignal, AbstractionLayer } from "@/types";
+import type { ProjectBrief, GraphNode, EvaluativeSignal, AbstractionLayer, SharingScope } from "@/types";
 
 // ── list_projects ─────────────────────────────────────────────────────────────
 
@@ -126,6 +127,15 @@ export async function handleAddSource(
     brief
   );
 
+  // Tag newly created nodes with 'gemini' source type
+  // (extractOntologyWithGemini returns the full updated graph, we need to find the new ones)
+  const existingNodeIds = new Set(graphState.nodes.map(n => n.id));
+  updatedGraph.nodes.forEach(n => {
+    if (!existingNodeIds.has(n.id)) {
+      n.sourceType = 'gemini';
+    }
+  });
+
   // Persist to Supabase
   await saveOntology(projectId, updatedGraph);
 
@@ -170,6 +180,7 @@ export async function handleAddNode(
     attractor: input.hubId ?? "emergent",
     description: input.description ?? "",
     position: { x: Math.random() * 400, y: Math.random() * 400 },
+    sourceType: 'sonnet', // Default API-driven node creation to sonnet
   };
 
   const updatedNodes = [...graphState.nodes, newNode];
@@ -252,6 +263,61 @@ export async function handleRunSynthesis(ctx: AuthContext, projectId: string) {
     agent: "gemini",
     summary: `API run_synthesis — ${documents.length} docs, ${result.termCollisions.length} collisions`,
     raw_output: { documentCount: result.documentCount },
+  }).catch((err) => console.warn("[api-handlers] session log failed:", err));
+
+  return result;
+}
+
+// ── commons_synthesis ───────────────────────────────────────────────────────
+
+export async function handleCommonsSynthesis(
+  ctx: AuthContext,
+  projectIds: string[],
+  sharingScope: SharingScope = "team"
+) {
+  assertScope(ctx, "read");
+
+  if (!projectIds || projectIds.length < 2) {
+    throw new Error("commons_synthesis requires at least 2 project IDs");
+  }
+  if (projectIds.length > 10) {
+    throw new Error("commons_synthesis supports at most 10 projects per call");
+  }
+
+  // Project-scoped tokens can only compare projects they have access to
+  for (const pid of projectIds) {
+    assertProject(ctx, pid);
+  }
+
+  // Fetch shared payloads in parallel
+  const payloads = await Promise.allSettled(
+    projectIds.map((pid) => getSharedProjectPayload(pid, sharingScope))
+  );
+
+  const projects = payloads
+    .filter((r): r is PromiseFulfilledResult<Awaited<ReturnType<typeof getSharedProjectPayload>>> => r.status === "fulfilled")
+    .map((r) => r.value)
+    .filter((p) => p.nodes.length > 0 || p.signals.length > 0);
+
+  if (projects.length < 2) {
+    throw new Error(
+      `Only ${projects.length} project(s) have shared data at scope "${sharingScope}" — need at least 2. Mark nodes/signals as shared first.`
+    );
+  }
+
+  const result = await synthesizeAcrossProjects(projects);
+
+  logSession({
+    project_id: projectIds[0],
+    type: "synthesis",
+    agent: "gemini",
+    summary: `API commons_synthesis — ${projects.length} projects, scope: ${sharingScope}`,
+    raw_output: {
+      projectIds,
+      sharingScope,
+      convergenceCount: result.convergence.length,
+      contactPointCount: result.contactPoints.length,
+    },
   }).catch((err) => console.warn("[api-handlers] session log failed:", err));
 
   return result;

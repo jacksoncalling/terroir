@@ -112,7 +112,12 @@
       "relevance": "Relevance",
       "intensity": "Intensity",
       "addNote": "+ note",
-      "notePlaceholder": "Add a note..."
+      "notePlaceholder": "Add a note...",
+      "sharing": "Share:",
+      "sharingPrivate": "Private",
+      "sharingTeam": "Team",
+      "sharingDivision": "Division",
+      "sharingCompany": "Company"
     }
   },
   "inspector": {
@@ -134,7 +139,12 @@
       "connections": "Connections",
       "tensions": "Tensions",
       "hubNode": "Hub Node",
-      "hubNodeDesc": "Structural anchor — entities connect to this hub. Rename via the label field above."
+      "hubNodeDesc": "Structural anchor — entities connect to this hub. Rename via the label field above.",
+      "sharing": "Sharing",
+      "sharingPrivate": "Private",
+      "sharingTeam": "Team",
+      "sharingDivision": "Division",
+      "sharingCompany": "Company"
     },
     "edge": {
       "title": "Relationship",
@@ -208,6 +218,25 @@
       "cancel": "Cancel",
       "create": "Create project",
       "creating": "Creating…"
+    },
+    "commons": {
+      "findCommons": "Find commons",
+      "running": "Comparing…",
+      "selected": "{count} selected",
+      "title": "Commons Synthesis",
+      "subtitle": "Cross-project mutual reachability",
+      "convergence": "Convergence",
+      "convergenceDesc": "Same concept, different names",
+      "contactPoints": "Contact points",
+      "contactPointsDesc": "Shared tensions across projects",
+      "divergence": "Evaluative divergence",
+      "divergenceDesc": "Different stances on the same signal",
+      "gaps": "Reachability gaps",
+      "gapsDesc": "One project can think what the other cannot yet",
+      "noResults": "No shared patterns found at this scope. Try sharing more nodes first.",
+      "presentIn": "Present in",
+      "absentFrom": "Absent from",
+      "close": "Close"
     }
   },
   "topbar": {

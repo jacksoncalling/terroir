@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import type { Project, ProjectPhase, AttractorPreset } from '@/types';
+import type { Project, ProjectPhase, AttractorPreset, CommonsSynthesisResult } from '@/types';
 import { getProjects, createProject, adoptProject, unnestProject } from '@/lib/supabase';
 import { useProject } from '@/lib/project-context';
 import { ATTRACTOR_PRESETS } from '@/lib/entity-types';
@@ -283,44 +283,56 @@ interface ProjectCardProps {
   onUnnest?: (projectId: string) => void;
   isChild?: boolean;
   parentName?: string;
+  checked?: boolean;
+  onCheck?: (projectId: string, checked: boolean) => void;
 }
 
-function ProjectCard({ project, onSelect, onAddSubProject, onNestUnder, onUnnest, isChild, parentName }: ProjectCardProps) {
+function ProjectCard({ project, onSelect, onAddSubProject, onNestUnder, onUnnest, isChild, parentName, checked, onCheck }: ProjectCardProps) {
   const updatedAt = new Date(project.updated_at);
   const relativeTime = formatRelativeTime(updatedAt);
   const preset = (project.metadata as Record<string, unknown>)?.attractorPreset as string | undefined;
 
   return (
-    <div className={`w-full text-left bg-white border border-stone-200 rounded-xl p-5 hover:border-stone-400 hover:shadow-sm transition-all group ${isChild ? 'ml-6 border-l-2 border-l-stone-300' : ''}`}>
-      <button onClick={() => onSelect(project)} className="w-full text-left">
-        {parentName && (
-          <p className="text-[10px] text-stone-400 mb-1">{parentName} /</p>
+    <div className={`w-full text-left bg-white border rounded-xl p-5 hover:border-stone-400 hover:shadow-sm transition-all group ${isChild ? 'ml-6 border-l-2 border-l-stone-300' : ''} ${checked ? 'border-violet-400 ring-1 ring-violet-200' : 'border-stone-200'}`}>
+      <div className="flex items-start gap-3">
+        {onCheck && (
+          <input
+            type="checkbox"
+            checked={checked ?? false}
+            onChange={(e) => { e.stopPropagation(); onCheck(project.id, e.target.checked); }}
+            className="mt-1 h-3.5 w-3.5 rounded border-stone-300 text-violet-600 focus:ring-violet-300 shrink-0 cursor-pointer accent-violet-600"
+          />
         )}
-        <div className="flex items-start justify-between gap-3 mb-2">
-          <h3 className="text-sm font-semibold text-stone-800 group-hover:text-stone-900 leading-tight">
-            {project.name}
-          </h3>
-          <PhaseBadge phase={project.phase} />
-        </div>
-
-        {project.sector && (
-          <p className="text-[11px] text-stone-400 mb-2">{project.sector}</p>
-        )}
-
-        {project.description && (
-          <p className="text-xs text-stone-500 mb-3 line-clamp-2">{project.description}</p>
-        )}
-
-        <div className="flex items-center gap-3 text-[10px] text-stone-400">
-          <span>Updated {relativeTime}</span>
-          {preset && (
-            <>
-              <span className="text-stone-200">·</span>
-              <span className="capitalize">{preset}</span>
-            </>
+        <button onClick={() => onSelect(project)} className="w-full text-left min-w-0">
+          {parentName && (
+            <p className="text-[10px] text-stone-400 mb-1">{parentName} /</p>
           )}
-        </div>
-      </button>
+          <div className="flex items-start justify-between gap-3 mb-2">
+            <h3 className="text-sm font-semibold text-stone-800 group-hover:text-stone-900 leading-tight">
+              {project.name}
+            </h3>
+            <PhaseBadge phase={project.phase} />
+          </div>
+
+          {project.sector && (
+            <p className="text-[11px] text-stone-400 mb-2">{project.sector}</p>
+          )}
+
+          {project.description && (
+            <p className="text-xs text-stone-500 mb-3 line-clamp-2">{project.description}</p>
+          )}
+
+          <div className="flex items-center gap-3 text-[10px] text-stone-400">
+            <span>Updated {relativeTime}</span>
+            {preset && (
+              <>
+                <span className="text-stone-200">·</span>
+                <span className="capitalize">{preset}</span>
+              </>
+            )}
+          </div>
+        </button>
+      </div>
 
       {/* Card actions */}
       <div className="mt-3 flex items-center gap-3">
@@ -353,6 +365,120 @@ function ProjectCard({ project, onSelect, onAddSubProject, onNestUnder, onUnnest
   );
 }
 
+// ── Commons results modal ──────────────────────────────────────────────────
+
+function CommonsResultsModal({
+  result,
+  onClose,
+}: {
+  result: CommonsSynthesisResult;
+  onClose: () => void;
+}) {
+  const t = useTranslations("projects.commons");
+  const hasResults =
+    result.convergence.length > 0 ||
+    result.contactPoints.length > 0 ||
+    result.evaluativeDivergence.length > 0 ||
+    result.reachabilityGaps.length > 0;
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-4 p-6 max-h-[80vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-5">
+          <div>
+            <h2 className="text-base font-semibold text-stone-800">{t("title")}</h2>
+            <p className="text-[11px] text-stone-400 mt-0.5">{t("subtitle")}</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-stone-400 hover:text-stone-600 text-lg leading-none"
+          >
+            ×
+          </button>
+        </div>
+
+        {!hasResults && (
+          <p className="text-sm text-stone-400 py-8 text-center">{t("noResults")}</p>
+        )}
+
+        {result.convergence.length > 0 && (
+          <section className="mb-6">
+            <h3 className="text-xs font-semibold text-violet-700 uppercase tracking-wide mb-1">{t("convergence")}</h3>
+            <p className="text-[10px] text-stone-400 mb-3">{t("convergenceDesc")}</p>
+            <div className="space-y-2">
+              {result.convergence.map((c, i) => (
+                <div key={i} className="bg-violet-50 border border-violet-100 rounded-lg p-3">
+                  <p className="text-xs font-medium text-stone-700">{c.label}</p>
+                  <p className="text-[10px] text-stone-500 mt-1">{c.rationale}</p>
+                  <p className="text-[10px] text-violet-500 mt-1">{c.projects.join(" · ")}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {result.contactPoints.length > 0 && (
+          <section className="mb-6">
+            <h3 className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-1">{t("contactPoints")}</h3>
+            <p className="text-[10px] text-stone-400 mb-3">{t("contactPointsDesc")}</p>
+            <div className="space-y-2">
+              {result.contactPoints.map((c, i) => (
+                <div key={i} className="bg-amber-50 border border-amber-100 rounded-lg p-3">
+                  <p className="text-xs font-medium text-stone-700">{c.theme}</p>
+                  <p className="text-[10px] text-stone-500 mt-1">{c.description}</p>
+                  <p className="text-[10px] text-amber-500 mt-1">{c.projects.join(" · ")}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {result.evaluativeDivergence.length > 0 && (
+          <section className="mb-6">
+            <h3 className="text-xs font-semibold text-red-700 uppercase tracking-wide mb-1">{t("divergence")}</h3>
+            <p className="text-[10px] text-stone-400 mb-3">{t("divergenceDesc")}</p>
+            <div className="space-y-2">
+              {result.evaluativeDivergence.map((d, i) => (
+                <div key={i} className="bg-red-50 border border-red-100 rounded-lg p-3">
+                  <p className="text-xs font-medium text-stone-700">{d.signal}</p>
+                  <p className="text-[10px] text-stone-500 mt-1">{d.divergence}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {result.reachabilityGaps.length > 0 && (
+          <section className="mb-6">
+            <h3 className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-1">{t("gaps")}</h3>
+            <p className="text-[10px] text-stone-400 mb-3">{t("gapsDesc")}</p>
+            <div className="space-y-2">
+              {result.reachabilityGaps.map((g, i) => (
+                <div key={i} className="bg-blue-50 border border-blue-100 rounded-lg p-3">
+                  <p className="text-xs font-medium text-stone-700">{g.node}</p>
+                  <div className="flex gap-4 mt-1">
+                    <p className="text-[10px] text-blue-600">{t("presentIn")}: {g.presentIn}</p>
+                    <p className="text-[10px] text-stone-400">{t("absentFrom")}: {g.absentFrom}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        <div className="flex justify-end pt-2">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm text-stone-500 hover:text-stone-700 transition-colors"
+          >
+            {t("close")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function formatRelativeTime(date: Date): string {
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
@@ -379,6 +505,9 @@ export default function ProjectsPage() {
   const [showModal, setShowModal] = useState(false);
   const [newProjectParentId, setNewProjectParentId] = useState<string | undefined>();
   const [nestTarget, setNestTarget] = useState<Project | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [commonsLoading, setCommonsLoading] = useState(false);
+  const [commonsResult, setCommonsResult] = useState<CommonsSynthesisResult | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -434,6 +563,35 @@ export default function ProjectsPage() {
     },
     [load]
   );
+
+  const handleCheck = useCallback((projectId: string, checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(projectId);
+      else next.delete(projectId);
+      return next;
+    });
+  }, []);
+
+  const handleFindCommons = useCallback(async () => {
+    if (selectedIds.size < 2) return;
+    setCommonsLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/commons-synthesis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectIds: [...selectedIds], scope: "team" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Commons synthesis failed");
+      setCommonsResult(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Commons synthesis failed");
+    } finally {
+      setCommonsLoading(false);
+    }
+  }, [selectedIds]);
 
   return (
     <div className="min-h-screen bg-stone-50">
@@ -515,6 +673,8 @@ export default function ProjectsPage() {
                       }}
                       onNestUnder={(p) => setNestTarget(p)}
                       onUnnest={handleUnnest}
+                      checked={selectedIds.has(project.id)}
+                      onCheck={handleCheck}
                     />
                     {childrenByParent[project.id]?.map((child) => (
                       <ProjectCard
@@ -524,6 +684,8 @@ export default function ProjectsPage() {
                         isChild
                         parentName={project.name}
                         onUnnest={handleUnnest}
+                        checked={selectedIds.has(child.id)}
+                        onCheck={handleCheck}
                       />
                     ))}
                   </div>
@@ -551,6 +713,29 @@ export default function ProjectsPage() {
           )}
           onClose={() => setNestTarget(null)}
           onNest={handleNest}
+        />
+      )}
+
+      {/* Floating commons bar */}
+      {selectedIds.size >= 2 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-stone-800 text-white rounded-full shadow-xl px-5 py-2.5 flex items-center gap-4 z-40">
+          <span className="text-xs text-stone-300">
+            {t("projects.commons.selected", { count: selectedIds.size })}
+          </span>
+          <button
+            onClick={handleFindCommons}
+            disabled={commonsLoading}
+            className="px-4 py-1.5 text-sm bg-violet-600 rounded-full hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+          >
+            {commonsLoading ? t("projects.commons.running") : t("projects.commons.findCommons")}
+          </button>
+        </div>
+      )}
+
+      {commonsResult && (
+        <CommonsResultsModal
+          result={commonsResult}
+          onClose={() => setCommonsResult(null)}
         />
       )}
     </div>

@@ -2,14 +2,14 @@
 
 import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
-import type { GraphState, GraphNode, Relationship, ProjectBrief, AttractorConfig } from "@/types";
+import type { GraphState, GraphNode, Relationship, ProjectBrief, AttractorConfig, SharingScope } from "@/types";
 import ProjectBriefPanel from "./ProjectBrief";
 
 interface InspectorProps {
   graphState: GraphState;
   selectedNodeId: string | null;
   selectedEdgeId: string | null;
-  onUpdateNode: (id: string, updates: Partial<Pick<GraphNode, "label" | "description" | "type" | "attractor">>) => void;
+  onUpdateNode: (id: string, updates: Partial<Pick<GraphNode, "label" | "description" | "type" | "attractor" | "sharingScope">>) => void;
   attractors?: AttractorConfig[];
   onUpdateRelationship: (id: string, updates: Partial<Pick<Relationship, "type" | "description">>) => void;
   onClose: () => void;
@@ -279,6 +279,25 @@ export default function Inspector({
               className="mt-0.5 w-full rounded border border-stone-200 px-2 py-1.5 text-xs text-stone-600 resize-none focus:border-stone-400 focus:outline-none"
             />
           </div>
+
+          {!selectedNode.is_hub && (
+            <div>
+              <label className="text-[10px] font-medium text-stone-500 uppercase tracking-wide">{t("inspector.node.sharing")}</label>
+              <select
+                value={selectedNode.sharingScope ?? "private"}
+                onChange={(e) => {
+                  onUpdateNode(selectedNode.id, { sharingScope: e.target.value as SharingScope });
+                }}
+                disabled={selectedNode.readonly}
+                className="mt-0.5 w-full rounded border border-stone-200 px-2 py-1.5 text-xs text-stone-600 focus:outline-none disabled:opacity-50"
+              >
+                <option value="private">{t("inspector.node.sharingPrivate")}</option>
+                <option value="team">{t("inspector.node.sharingTeam")}</option>
+                <option value="division">{t("inspector.node.sharingDivision")}</option>
+                <option value="company">{t("inspector.node.sharingCompany")}</option>
+              </select>
+            </div>
+          )}
 
           {connections.length > 0 && (
             <div>

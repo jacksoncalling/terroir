@@ -98,7 +98,7 @@ export function addNode(
 export function updateNode(
   state: GraphState,
   id: string,
-  updates: Partial<Pick<GraphNode, "label" | "description" | "type" | "attractor" | "properties" | "position">>,
+  updates: Partial<Pick<GraphNode, "label" | "description" | "type" | "attractor" | "properties" | "position" | "sharingScope">>,
   newHubId?: string,
   hubDescription?: string
 ): GraphState {

@@ -14,6 +14,10 @@ import type {
   CrossDocRelationship,
   AttractorReassignment,
   AttractorPreset,
+  SessionType,
+  SessionAgent,
+  SharingScope,
+  CompactProjectPayload,
 } from '@/types';
 import { seedHubNodes } from './entity-types';
 
@@ -718,6 +722,8 @@ export async function loadOntology(projectId: string): Promise<GraphState> {
     description: row.description ?? '',
     position: { x: row.position_x ?? 0, y: row.position_y ?? 0 },
     properties: row.properties ?? {},
+    sourceType: row.source_type as SessionAgent ?? 'manual',
+    sharingScope: row.sharing_scope ?? 'private',
   }));
 
   const relationships: Relationship[] = (relsRes.data ?? []).map((row) => ({
@@ -772,6 +778,7 @@ export async function loadOntology(projectId: string): Promise<GraphState> {
     intensityScore: row.intensity_score ?? null,
     reflectedAt: row.reflected_at ?? null,
     userNote: row.user_note ?? null,
+    sharingScope: row.sharing_scope ?? 'private',
   }));
 
   const entityTypes: EntityTypeConfig[] = (entityTypesRes.data ?? []).map((row) => ({
@@ -844,6 +851,8 @@ export async function saveOntology(projectId: string, state: GraphState): Promis
         position_x: n.position.x,
         position_y: n.position.y,
         properties: n.properties ?? {},
+        source_type: n.sourceType ?? 'manual',
+        sharing_scope: n.sharingScope ?? 'private',
       })),
       { onConflict: 'id', ignoreDuplicates: false }
     );
@@ -903,6 +912,7 @@ export async function saveOntology(projectId: string, state: GraphState): Promis
         intensity_score: s.intensityScore ?? null,
         reflected_at: s.reflectedAt ?? null,
         user_note: s.userNote ?? null,
+        sharing_scope: s.sharingScope ?? 'private',
       })),
       { onConflict: 'id', ignoreDuplicates: false }
     );
@@ -992,9 +1002,6 @@ export async function saveOntology(projectId: string, state: GraphState): Promis
 
 // ── Session logging ──────────────────────────────────────────────────────────
 
-export type SessionType = 'inquiry' | 'extraction' | 'synthesis' | 'classification' | 'manual';
-export type SessionAgent = 'haiku' | 'sonnet' | 'gemini' | 'manual';
-
 export async function logSession(input: {
   project_id: string;
   type: SessionType;
@@ -1050,6 +1057,88 @@ export async function searchChunks(
 
   if (error) throw new Error(`searchChunks: ${error.message}`);
   return data ?? [];
+}
+
+// ── Cross-project commons ───────────────────────────────────────────────────
+//
+// Queries nodes, signals, and tensions that have been explicitly shared
+// (sharing_scope != 'private'). Used by the commons synthesis pass to
+// compare multiple projects without exposing private data.
+
+const SCOPE_HIERARCHY: SharingScope[] = ['team', 'division', 'company'];
+
+function scopeFilter(requestedScope: SharingScope): SharingScope[] {
+  if (requestedScope === 'private') return [];
+  const idx = SCOPE_HIERARCHY.indexOf(requestedScope);
+  return SCOPE_HIERARCHY.slice(idx);
+}
+
+export async function getSharedProjectPayload(
+  projectId: string,
+  scope: SharingScope
+): Promise<CompactProjectPayload> {
+  const allowedScopes = scopeFilter(scope);
+  if (allowedScopes.length === 0) {
+    return { projectId, projectName: '', nodes: [], signals: [], tensions: [] };
+  }
+
+  const [project, nodesRes, signalsRes, tensionsRes] = await Promise.all([
+    getProject(projectId),
+    supabase
+      .from('ontology_nodes')
+      .select('id, label, type, description, sharing_scope, is_hub')
+      .eq('project_id', projectId)
+      .in('sharing_scope', allowedScopes),
+    supabase
+      .from('evaluative_signals')
+      .select('label, direction, strength, threshold_proximity, sharing_scope')
+      .eq('project_id', projectId)
+      .in('sharing_scope', allowedScopes),
+    supabase
+      .from('tension_markers')
+      .select('description')
+      .eq('project_id', projectId),
+  ]);
+
+  if (nodesRes.error) throw new Error(`getSharedProjectPayload nodes: ${nodesRes.error.message}`);
+  if (signalsRes.error) throw new Error(`getSharedProjectPayload signals: ${signalsRes.error.message}`);
+  if (tensionsRes.error) throw new Error(`getSharedProjectPayload tensions: ${tensionsRes.error.message}`);
+
+  return {
+    projectId,
+    projectName: project?.name ?? projectId,
+    nodes: (nodesRes.data ?? [])
+      .filter((r) => r.is_hub !== true)
+      .map((r) => ({
+        id: r.id,
+        label: r.label ?? '',
+        type: r.type ?? 'concept',
+        description: (r.description ?? '').slice(0, 100),
+      })),
+    signals: (signalsRes.data ?? []).map((r) => ({
+      label: r.label ?? '',
+      direction: r.direction ?? 'toward',
+      strength: r.strength ?? 0,
+      thresholdProximity: r.threshold_proximity ?? null,
+    })),
+    tensions: (tensionsRes.data ?? []).map((r) => ({
+      label: r.description ?? '',
+      description: r.description ?? '',
+    })),
+  };
+}
+
+export async function updateSharingScope(
+  table: 'ontology_nodes' | 'evaluative_signals',
+  ids: string[],
+  scope: SharingScope
+): Promise<void> {
+  if (ids.length === 0) return;
+  const { error } = await supabase
+    .from(table)
+    .update({ sharing_scope: scope })
+    .in('id', ids);
+  if (error) throw new Error(`updateSharingScope (${table}): ${error.message}`);
 }
 
 // ── Graph snapshots ──────────────────────────────────────────────────────────

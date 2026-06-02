@@ -112,7 +112,12 @@
       "relevance": "Relevanz",
       "intensity": "Intensität",
       "addNote": "+ Notiz",
-      "notePlaceholder": "Notiz hinzufügen..."
+      "notePlaceholder": "Notiz hinzufügen...",
+      "sharing": "Teilen:",
+      "sharingPrivate": "Privat",
+      "sharingTeam": "Team",
+      "sharingDivision": "Abteilung",
+      "sharingCompany": "Unternehmen"
     }
   },
   "inspector": {
@@ -134,7 +139,12 @@
       "connections": "Verbindungen",
       "tensions": "Spannungen",
       "hubNode": "Hub-Knoten",
-      "hubNodeDesc": "Strukturanker — Entitäten verbinden sich mit diesem Hub. Über das Bezeichnungsfeld oben umbenennen."
+      "hubNodeDesc": "Strukturanker — Entitäten verbinden sich mit diesem Hub. Über das Bezeichnungsfeld oben umbenennen.",
+      "sharing": "Freigabe",
+      "sharingPrivate": "Privat",
+      "sharingTeam": "Team",
+      "sharingDivision": "Abteilung",
+      "sharingCompany": "Unternehmen"
     },
     "edge": {
       "title": "Beziehung",
@@ -208,6 +218,25 @@
       "cancel": "Abbrechen",
       "create": "Projekt erstellen",
       "creating": "Wird erstellt…"
+    },
+    "commons": {
+      "findCommons": "Gemeinsames finden",
+      "running": "Vergleiche…",
+      "selected": "{count} ausgewählt",
+      "title": "Commons-Synthese",
+      "subtitle": "Projektübergreifende Erreichbarkeit",
+      "convergence": "Konvergenz",
+      "convergenceDesc": "Gleiches Konzept, verschiedene Namen",
+      "contactPoints": "Berührungspunkte",
+      "contactPointsDesc": "Geteilte Spannungen über Projekte hinweg",
+      "divergence": "Evaluative Divergenz",
+      "divergenceDesc": "Unterschiedliche Haltung zum gleichen Signal",
+      "gaps": "Erreichbarkeitslücken",
+      "gapsDesc": "Ein Projekt kann denken, was das andere noch nicht kann",
+      "noResults": "Keine gemeinsamen Muster in diesem Scope gefunden. Teile zuerst mehr Knoten.",
+      "presentIn": "Vorhanden in",
+      "absentFrom": "Fehlt in",
+      "close": "Schließen"
     }
   },
   "topbar": {

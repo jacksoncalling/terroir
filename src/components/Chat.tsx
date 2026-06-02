@@ -37,7 +37,7 @@ interface ChatProps {
    */
   onSignalReflect?: (
     signalId: string,
-    updates: Partial<Pick<EvaluativeSignal, "relevanceScore" | "intensityScore" | "reflectedAt" | "userNote">>
+    updates: Partial<Pick<EvaluativeSignal, "relevanceScore" | "intensityScore" | "reflectedAt" | "userNote" | "sharingScope">>
   ) => void;
   /** Called when the user resolves a tension in the Reflect tab. */
   onTensionResolve?: (tensionId: string) => void;
@@ -131,7 +131,7 @@ function SignalCard({
 }: {
   signal: EvaluativeSignal;
   projectId: string | null;
-  onReflect: (updates: Partial<Pick<EvaluativeSignal, "relevanceScore" | "intensityScore" | "reflectedAt" | "userNote">>) => void;
+  onReflect: (updates: Partial<Pick<EvaluativeSignal, "relevanceScore" | "intensityScore" | "reflectedAt" | "userNote" | "sharingScope">>) => void;
 }) {
   const t = useTranslations();
   const [expanded, setExpanded] = useState(false);
@@ -237,6 +237,19 @@ function SignalCard({
               {relativeTime(signal.reflectedAt)}
             </p>
           )}
+          <div className="flex items-center gap-1.5 pt-1">
+            <span className="text-[10px] text-stone-400">{t("reflect.signals.sharing")}</span>
+            <select
+              value={signal.sharingScope ?? "private"}
+              onChange={(e) => onReflect({ sharingScope: e.target.value as EvaluativeSignal["sharingScope"] })}
+              className="rounded border border-stone-200 px-1.5 py-0.5 text-[10px] text-stone-500 focus:outline-none bg-white"
+            >
+              <option value="private">{t("reflect.signals.sharingPrivate")}</option>
+              <option value="team">{t("reflect.signals.sharingTeam")}</option>
+              <option value="division">{t("reflect.signals.sharingDivision")}</option>
+              <option value="company">{t("reflect.signals.sharingCompany")}</option>
+            </select>
+          </div>
         </div>
       )}
 
