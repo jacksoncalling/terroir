@@ -33,38 +33,30 @@ Read `.claude/plans/` at session start if working on a named feature.
 
 ---
 
-## Current State — Updated 2026-05-01
+## Current State — Updated 2026-06-08
 
 ### What's working
-- Full 3-panel editor live on Vercel (Chat / Sources+Synthesis+Reflect / Canvas / Inspector)
-- Three ontology presets (Enterprise, Startup, Individual) with hub-specific seeding
-- Hub nodes as real graph entities — taxonomy→ontology shift. Every entity connects via `belongs_to_hub`.
-- **Language-consistent extraction** — Gemini + Sonnet prompts enforce single-language output matching the source document.
-- **Two-pass Sonnet bridge on transcript extraction** — after `extractFromNarrative()`, a second Sonnet call assigns each new entity to a hub and identifies semantic connections to existing graph nodes. Best-effort: bridge failure returns unbridged graph.
-- **Structured tension extraction (Sonnet)** — full TENSION RULES block calibrated for interview/spoken narrative. Sonnet rates tensions 1–5 confidence; top 3 auto-applied to graph. Suppressed tensions surfaced in Reflect tab as amber review cards.
-- **Terroir v1 API** — authenticated HTTP surface at `/api/v1/`. 7 endpoints: `list_projects`, `get_project`, `query_graph`, `add_source`, `add_node`, `add_signal`, `run_synthesis`. Bearer tokens SHA-256 hashed at rest, per-consumer, optionally project-scoped.
-- **MCP server — end-to-end working in Claude Code.** Registered via `~/Terroir/.mcp.json` (project root, outside the `terroir/` git repo). Boots through `mcp-server/start-mcp.cmd`, runs via `ts-node` against `index.ts`, imports handlers directly from `terroir/src/lib/api-handlers`. Tested live: `list_projects` and `run_synthesis` confirmed working against the Terrior project on 2026-05-01.
-- **`/project` slash command** at `~/Terroir/.claude/commands/project.md` — lists projects, locks one in for the session, routes all subsequent terroir tool calls. Includes `current` and `clear` subcommands.
-- **Auth lookup now prefers `SUPABASE_SERVICE_KEY`** — `api-auth.ts/.js` updated. RLS on `api_tokens` blocks anon reads (correct security posture); auth uses the service key to bypass RLS for the hash lookup. Anon key remains as fallback.
-- **Canal migrated** — `genau/context/terroir-context.js` reads from `/api/v1/`. `TERROIR_SUPABASE_URL` / `TERROIR_SUPABASE_ANON_KEY` can be removed from Render after production smoke test confirms.
-- **Node size = evaluative intensity**, **Jagged border = emergent + high-intensity**, **Session Delta narration**, **Gradient Signal Extraction**, **Bilingual UI (DE/EN)**, **Meta-tensions**, **Synthesis: Winemaker's Reading**, **Signal dedup**, **Topology enrichment**, **Filesystem export**, **Public read endpoint** — all live.
+- **MCP evaluative read tools (Move 5) — live & validated.** `surface_tensions` (tensions resolved to entity labels; local vs cross-graph fault lines) and `get_evaluative_field` (signals as directional gradients with costs, decision-points, verified ratio) — the evaluative layer `query_graph` can't reach. Committed: branch `feat/mcp-evaluative-read-tools` @ `bf58b0c`.
+- **`mcp-server` is now its own git repo** (root-commit `1c66a7a`), extracted from an accidental home-dir git root. Thin RPC shell over `terroir/src/lib`; `npm run build` + Claude Code restart to load new tools.
+- **Architecture decided — federate, don't nest:** Step Into More = brand · Jackson Calling = identity · each offering its own graph; `commons-synthesis` maps the couplings (correlation, not containment).
+- **Empirical (Step Into More):** `integrate` merges duplicates + reassigns hubs but adds **0 relationships** in a single-source graph — relationships are born in *extraction*. The connectivity that matters is the **tension + signal field**, not edges.
+- Carry-over (all live): 3-panel editor on Vercel · 3 presets · hub nodes as real entities (`belongs_to_hub`) · language-consistent extraction · two-pass Sonnet bridge · structured tension extraction · Terroir v1 API (7 endpoints, SHA-256 hashed bearer tokens) · MCP server end-to-end · `/project` command · auth prefers `SUPABASE_SERVICE_KEY` · Canal migrated to `/api/v1/` · visual-language features (node size, jagged border, session delta, gradient signals, bilingual UI, meta-tensions, winemaker's reading, signal dedup, filesystem export, public read endpoint).
 
 ### Known bugs
-- **Vercel `/api/v1/*` will break on next deploy unless `SUPABASE_SERVICE_KEY` is set in Vercel env** — auth code change now prefers it. Without it, the fallback to anon key trips RLS and rejects all valid tokens. See What's Next #1.
-- **Stale `.js` artifacts alongside `.ts` sources in `src/lib/`** — `api-auth.js`, `supabase.js`, etc. live next to their `.ts` counterparts. ts-node may resolve `.js` first, so source edits don't take effect. This caused phantom auth bugs during the MCP debug session. Either gitignore + delete, or wire a real `tsc` step before MCP starts.
-- **`~/.claude/mcp.json` is a non-functional file** — Sonnet created it during MCP setup thinking Claude Code reads from there; it doesn't. Safe to delete. Real MCP config lives in `~/Terroir/.mcp.json`.
-- **Entity type UUID bug** — entity type IDs use slugs not UUIDs → `entity_type_configs` upsert returns 400. Non-fatal.
+- **`integrate` doesn't remap `tensions[].relatedNodeIds` after merges** → dangling refs (read tools surface `(merged)`). Fix task spawned 2026-06-08.
+- **⚠️ Accidental `.git` at home dir `C:/Users/Max Mustermann`** — tracks the entire home folder (`.ssh`, `NTUSER.DAT`, `.claude.json` tokens). **Never run git from a home-rooted shell;** remove the stray repo after checking its log (destructive — Joshua's call). Detail in `.claude/notes/2026-06-08-session-scribe.md` §6.
+- **Vercel `/api/v1/*` needs `SUPABASE_SERVICE_KEY` in env** or RLS rejects valid tokens (carry-over — verify on next deploy).
+- **Entity type UUID bug** — type IDs use slugs not UUIDs → `entity_type_configs` upsert returns 400. Non-fatal.
 - **Realtime unconfirmed** — `ontology_relationships` may not be published to Realtime.
 - **`enrichState` stale after external signal change** — needs `useEffect` reset on signal count change.
-- **`window.confirm` for reprocess is EN-only** — confirm dialog in `ProjectBrief.tsx:76` hardcoded English.
+- **`window.confirm` for reprocess is EN-only** — `ProjectBrief.tsx:76` hardcoded English.
+- **`~/.claude/mcp.json` is a dead file** — not read by Claude Code; safe to delete. Real config: `~/Terroir/.mcp.json`.
 
 ### What's next
-1. **Set `SUPABASE_SERVICE_KEY` in Vercel env before the next deploy** — bundle with the auth code change commit. Otherwise Canal and any future API consumer breaks in production.
-2. **Clean up stale `.js` artifacts** — decide: delete and rely on ts-node, or wire `tsc` build step. Pick one and apply consistently across `src/lib/`.
-3. **Delete `~/.claude/mcp.json`** — invented config file, not read by Claude Code.
-4. **Test tension pipeline end-to-end** — paste a real interview transcript, verify top 3 tensions auto-applied, suppressed ones appear in Reflect tab, "Add to graph" promotes correctly.
-5. **Test bridge pass end-to-end** — verify hub assignments + cross-graph connections appear on canvas after transcript upload.
-6. **Canal production smoke test** — confirm signal resonance on Render, then remove `TERROIR_SUPABASE_URL` / `TERROIR_SUPABASE_ANON_KEY` from Render env.
+1. **Re-home personal topology SIM → Jackson Calling** — `.claude/plans/rehome-to-jackson-calling.md`. Decide JC hubs (fixed life-frame recommended) first; re-author via `add_source` + `integrate`; clean SIM in UI (no MCP delete tool yet).
+2. **Fix the tension `relatedNodeIds` remap bug** (spawned task) — restores integrity of the field the new read tools expose.
+3. **Move 3 — expose `integrate_graph(project_id)` on the MCP** (thin wrap of `/api/integrate`); then **Move 4** — expose the grammar as MCP instructions/resources.
+4. Carry-over: set `SUPABASE_SERVICE_KEY` in Vercel before next deploy · Canal prod smoke test (then drop `TERROIR_SUPABASE_URL` / `TERROIR_SUPABASE_ANON_KEY` from Render).
 
 ---
 
@@ -223,6 +215,8 @@ Or use the VS Code launch config (`terroir-dev`).
 
 ## Patterns & Gotchas
 
+- **Read the field, don't just write to it**: A graph MCP's value is in traversal (`surface_tensions` / `get_evaluative_field`), not ingest. Connectivity lives in the evaluative layer (tensions + signals), not relationship edges — don't judge graph health by edge count. See `~/.claude/learnings/2026-06-08-mcp-read-vs-write-asymmetry.md`
+
 **Filesystem export**
 - `POST /api/export-to-files` writes a markdown folder projection of a project to disk. Triggered from the Inspector "Sync to filesystem" button.
 - Default output: `<repo-root>/exports/<project-slug>/`. Override with env var:
@@ -238,6 +232,12 @@ Or use the VS Code launch config (`terroir-dev`).
 - **Abstraction layer is explicit:** three presets fed to Gemini — never default to "extract everything". Set in ProjectBrief, passed to every Gemini extraction call.
 - **Signals live in Reflect tab only** — not on the canvas overlay, not in the Inspector. One source of truth.
 - **Two-pass extraction bridge:** Extraction (what's in the text) and integration (where it fits in the graph) are separate tasks — never combine them in one prompt. Add a bridge pass after extraction for any new input method. See `~/.claude/learnings/2026-04-28-two-pass-bridge-extraction.md`
+
+**Auth & MCP**
+- **RLS on `api_tokens` requires `SUPABASE_SERVICE_KEY` for auth lookups** — anon key returns empty (correct security posture). `api-auth.ts` falls through `SUPABASE_SERVICE_KEY ?? NEXT_PUBLIC_SUPABASE_ANON_KEY ?? SUPABASE_ANON_KEY`. Set `SUPABASE_SERVICE_KEY` in every env that runs auth (Vercel, MCP, local dev) — without it, every valid token is rejected as "Invalid token". See `~/.claude/learnings/2026-05-01-rls-blocks-auth-token-lookup.md`
+- **Stale `.js` next to `.ts` in `src/lib/`** — ts-node may load the `.js` first; source edits silently fail. Audit with `find src -name "*.ts" | while read ts; do [ -f "${ts%.ts}.js" ] && echo "stale: ${ts%.ts}.js"; done`. See `~/.claude/learnings/2026-05-01-stale-compiled-js-shadows-ts.md`
+- **MCP debug stack-from-the-bottom playbook** — when MCP/auth/Supabase isn't working: `claude mcp list` first → `ls` the command path → run server manually with env → curl Supabase REST with anon key (empty = RLS) → decode JWT labels → check stale `.js` → full process restart. See `~/.claude/learnings/2026-05-01-debugging-mcp-stack-from-the-bottom.md`
+- **MCP config canonical location: `~/Terroir/.mcp.json`** (project root, outside the `terroir/` git repo so secrets can't be committed). NOT `~/.claude/mcp.json` (Claude Code doesn't read that path). NOT `~/.claude.json` projects → mcpServers (legacy; works but path-keyed and fragile).
 
 **Data**
 - **saveOntology ID interpolation:** NOT IN filter uses string-interpolated UUIDs — safe for UUIDs, watch if slug IDs ever contain special chars.
@@ -272,6 +272,8 @@ Or use the VS Code launch config (`terroir-dev`).
 - **Tensions resolve via graphState:** `handleTensionResolve` in page.tsx sets `tension.status = "resolved"` locally; `saveOntology` (debounced 800ms) persists it. No dedicated API route.
 - **Signal dedup pattern:** Same as entity integration pass — Gemini groups near-duplicates in one call, `executeSignalMerges` in supabase.ts applies batch deletes + survivor update, API route at `POST /api/signals/deduplicate`.
 
+**Team ontology design principle**: The goal is mutual reachability, not consensus. Map contact points and drift between individual ontologies — don't merge them. Synthesis runs at different temporal frequencies: signals weekly, nodes monthly, commons quarterly. Everything private by default, explicit opt-in to share. See `~/.claude/learnings/2026-06-02-mutual-reachability-team-ontology-design.md`
+
 **Cross-document integration**
 - Integration runs AFTER all documents in a batch are extracted — it is Phase 5 of the Sources pipeline, not part of extraction
 - Triggered manually via the "Run integration" button (violet panel, appears when ≥1 file is `done`)
@@ -295,18 +297,7 @@ Bulk document extraction was silently returning 0 entities for 11/13 podcast tra
 
 ## Phase History (compressed)
 
-| Phase | Period | Status |
-|-------|--------|--------|
-| Phase 1 — Core graph editor | Mar 9–15 | ✅ Complete |
-| Phase 2 — Haiku scoping + synthesis | Mar 16 | ✅ Complete |
-| Phase 2.5 — PoC readiness (Gemini synthesis, 4-phase Sources, paste-text, export bundle) | Mar 18–20 | ✅ Complete |
-| Phase 3 — Cloud deployment (Vercel, Share button, Realtime) | Mar 24 | ✅ Complete |
-| Phase 3.5 — Reflect tab (signal rating, UI restructure, collapsible inspector) | Mar 26 | ✅ Complete |
-| Phase 4 — Ontology scaffolding (attractor presets, emergent zone, nested ontologies) | Mar 27 | ✅ Complete |
-| Phase 5 — Graph clarity (tensions visible, signal dedup, filter-first canvas) | Mar 29 | ✅ Complete |
-| Phase 6 — Hub nodes (taxonomy → ontology, programmatic enforcement, context scaling) | Mar 30 | ✅ Complete (pending Supabase migration) |
-| Phase 7 — Topology-aware signal enrichment (Enrich button + hypothesis card) | Apr 2 | ✅ Complete |
-| Phase 8 — PoC validation + demo prep + Anthropic architecture program | TBD | 🟥 Next |
+See [PHASE_HISTORY.md](./PHASE_HISTORY.md) for full project history.
 
 ---
 
