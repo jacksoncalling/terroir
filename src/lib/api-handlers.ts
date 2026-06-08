@@ -322,3 +322,89 @@ export async function handleCommonsSynthesis(
 
   return result;
 }
+
+// ── surface_tensions ──────────────────────────────────────────────────────────
+// READ-ONLY traversal of the evaluative layer that query_graph cannot reach:
+// query_graph returns text chunks; this returns the STRUCTURED tension field,
+// each tension resolved to entity LABELS, split into local tensions vs
+// cross-graph fault lines, sorted by how much of the graph each implicates.
+// (Move 5 — validated live against project "Step Into More" on 2026-06-08.)
+export async function handleSurfaceTensions(
+  ctx: AuthContext,
+  projectId: string,
+  opts: { includeResolved?: boolean } = {}
+) {
+  assertScope(ctx, "read");
+  assertProject(ctx, projectId);
+
+  const graph = await loadOntology(projectId);
+  const labelById = new Map(graph.nodes.map((n) => [n.id, n.label]));
+
+  const shaped = graph.tensions
+    .filter((t) => opts.includeResolved || t.status !== "resolved")
+    .map((t) => ({
+      id: t.id,
+      description: t.description,
+      between: t.relatedNodeIds.map((id) => labelById.get(id) ?? "(merged)"), // labels, not UUIDs
+      poleCount: t.relatedNodeIds.length,
+      scope: t.scope ?? "local",
+      status: t.status,
+    }))
+    .sort((a, b) => b.poleCount - a.poleCount);
+
+  return {
+    projectId,
+    tensionCount: shaped.length,
+    faultLines: shaped.filter((t) => t.scope === "cross-graph"), // the "Surface fault lines" set
+    localTensions: shaped.filter((t) => t.scope !== "cross-graph"),
+  };
+}
+
+// ── get_evaluative_field ──────────────────────────────────────────────────────
+// READ-ONLY. Returns the signal field shaped as directional gradients — what is
+// AT STAKE, not just what is connected — with costs, decision-points (near
+// threshold), and verified/unverified state. The thing query_graph structurally
+// cannot do: it searches text chunks, not the structured evaluative field.
+export async function handleGetEvaluativeField(
+  ctx: AuthContext,
+  projectId: string,
+  filter: {
+    direction?: "toward" | "away_from" | "protecting";
+    temporalHorizon?: string;
+    minStrength?: number;
+    nearThreshold?: boolean; // thresholdProximity >= 4
+  } = {}
+) {
+  assertScope(ctx, "read");
+  assertProject(ctx, projectId);
+
+  const graph = await loadOntology(projectId);
+  let signals = graph.evaluativeSignals;
+
+  if (filter.direction)       signals = signals.filter((s) => s.direction === filter.direction);
+  if (filter.temporalHorizon) signals = signals.filter((s) => s.temporalHorizon === filter.temporalHorizon);
+  if (filter.minStrength)     signals = signals.filter((s) => s.strength >= filter.minStrength!);
+  if (filter.nearThreshold)   signals = signals.filter((s) => (s.thresholdProximity ?? 0) >= 4);
+
+  const view = (s: EvaluativeSignal) => ({
+    label: s.label,
+    strength: s.strength,
+    atCostOf: s.atCostOf,
+    thresholdProximity: s.thresholdProximity,
+    horizon: s.temporalHorizon,
+    verified: Boolean(s.reflectedAt),
+  });
+
+  return {
+    projectId,
+    total: signals.length,
+    byDirection: {
+      toward:     signals.filter((s) => s.direction === "toward").map(view),
+      away_from:  signals.filter((s) => s.direction === "away_from").map(view),
+      protecting: signals.filter((s) => s.direction === "protecting").map(view),
+    },
+    decisionPoints: signals.filter((s) => (s.thresholdProximity ?? 0) >= 4).map(view), // corridors closing
+    foundational: signals.filter((s) => s.temporalHorizon === "foundational").map(view),
+    verifiedRatio: `${signals.filter((s) => s.reflectedAt).length}/${signals.length}`,
+  };
+}
