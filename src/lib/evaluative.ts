@@ -1,8 +1,7 @@
-import type { EvaluativeSignal, GraphState } from "@/types";
+import type { EvaluativeSignal, GraphState, Resonance } from "@/types";
 
 // Intensity threshold for the jagged border visual state.
-// A node crosses this when its linked signals produce a combined score ≥ this value.
-// Example: two signals each rated relevance=2, intensity=3 → 2×3 + 2×3 = 12 → jagged.
+// A node crosses this when its linked signals produce a combined weight ≥ this value.
 export const JAGGED_INTENSITY_THRESHOLD = 10;
 
 // Bounds for the linear size-mapping scale.
@@ -10,10 +9,19 @@ export const JAGGED_INTENSITY_THRESHOLD = 10;
 export const INTENSITY_MIN = 0;
 export const INTENSITY_MAX = 50;
 
+// Per-signal evaluative weight by resonance verdict. Replaces the old
+// relevance × intensity product. Dissonance is information, not weakness: it
+// carries real weight and is surfaced (see nodeHasDissonance), never shrunk.
+export const RESONANCE_WEIGHT: Record<Resonance, number> = {
+  resonant:  6,
+  equivocal: 2,
+  dissonant: 4,
+};
+
 /**
- * Compute raw evaluative intensity for a single node.
- * Formula: Σ (intensityScore × relevanceScore) for every signal linked to this node.
- * Unrated scores (null) contribute 0.
+ * Compute raw evaluative weight for a single node.
+ * Formula: Σ RESONANCE_WEIGHT[resonance] for every linked signal that has a
+ * verdict. Unjudged signals (resonance == null) contribute 0.
  */
 export function computeNodeIntensity(
   nodeId: string,
@@ -21,11 +29,15 @@ export function computeNodeIntensity(
 ): number {
   return signals
     .filter((s) => s.relatedNodeIds?.includes(nodeId))
-    .reduce((sum, s) => {
-      const i = s.intensityScore ?? 0;
-      const r = s.relevanceScore ?? 0;
-      return sum + i * r;
-    }, 0);
+    .reduce((sum, s) => sum + (s.resonance ? RESONANCE_WEIGHT[s.resonance] : 0), 0);
+}
+
+/** True if any signal linked to this node is dissonant (mis-voiced — a re-voice flag). */
+export function nodeHasDissonance(
+  nodeId: string,
+  signals: EvaluativeSignal[]
+): boolean {
+  return signals.some((s) => s.resonance === "dissonant" && s.relatedNodeIds?.includes(nodeId));
 }
 
 /**

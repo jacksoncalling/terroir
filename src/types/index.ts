@@ -85,6 +85,9 @@ export interface TensionMarker {
  */
 export type TemporalHorizon = "operational" | "tactical" | "strategic" | "foundational";
 
+/** Resonance verdict on a signal — the human reflect judgment (replaces relevance × intensity). */
+export type Resonance = "dissonant" | "equivocal" | "resonant";
+
 export interface EvaluativeSignal {
   id: string;
   label: string;
@@ -104,12 +107,15 @@ export interface EvaluativeSignal {
   // ── Graph connections — IDs of nodes this signal evaluates ────────────────
   /** Node IDs linked via signal_node_links junction table */
   relatedNodeIds?: string[];
-  // ── Reflect tab scores — set by the user, nullable until rated ────────────
-  /** How relevant is this signal to the current work? (1–5, null = unrated) */
-  relevanceScore?: number | null;
-  /** How urgent / high-stakes does this signal feel right now? (1–5, null = unrated) */
-  intensityScore?: number | null;
-  /** ISO timestamp of the last reflection rating */
+  // ── Reflect verdict — set by the user, nullable until judged ───────────────
+  /**
+   * Resonance verdict from the reflect / resonance-probe pass. Replaces the old
+   * relevance × intensity dials. A human (not the extractor) judges whether the
+   * signal rings true against the field, anchored to the protected-term grammar
+   * rather than to taste. dissonant = mis-voiced or off; re-voice it.
+   */
+  resonance?: Resonance | null;
+  /** ISO timestamp of the last reflection verdict */
   reflectedAt?: string | null;
   /** Optional freetext note from the consultant */
   userNote?: string | null;

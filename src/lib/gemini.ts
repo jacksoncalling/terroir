@@ -29,6 +29,7 @@ import type {
   CommonsSynthesisResult,
 } from "@/types";
 import { v4 as uuidv4 } from "uuid";
+import { detectStructuralPatterns } from "@/lib/topology";
 import { HUB_RELATIONSHIP_TYPE } from "@/types";
 import { ensureTypeExists, getAttractorsForPreset, getHubNodes, getHubMembers, findHubByAttractorId } from "./entity-types";
 
@@ -1493,9 +1494,9 @@ export async function enrichSignalsWithTopology(
 
 interface MetaTensionOutput {
   faultLines: {
+    index: number; // 1-based reference to the code-detected pattern this voices
     description: string;
     somaticPattern: "contracted" | "blocked" | "pulled";
-    relatedHubSlugs: string[];
   }[];
 }
 
@@ -1504,110 +1505,63 @@ interface MetaTensionOutput {
  * Input is the same compact payload used by the topology-signal enrichment pass.
  */
 function buildMetaTensionPrompt(
+  patterns: import("@/lib/topology").StructuralPattern[],
   payload: import("@/lib/topology").TopologyPayload
 ): string {
-  const hubSummary = payload.hubs
+  const patternBlock = patterns
     .map(
-      (h) =>
-        `  - "${h.id}" (${h.label}): ${h.memberCount} members, ${h.internalConnections} internal connections, ${h.tensionCount} local tensions`
+      (p, i) =>
+        `${i + 1}. [${p.pattern}] hubs: ${p.hubSlugs.join(", ")}\n   evidence: ${p.evidence}`
     )
     .join("\n");
-
-  const crossHubSummary =
-    payload.crossHubConnections.length > 0
-      ? payload.crossHubConnections
-          .slice(0, 10)
-          .map((c) => `  - ${c.from} ↔ ${c.to}: ${c.count} cross-hub relationships`)
-          .join("\n")
-      : "  (none detected)";
-
-  const signalSummary =
-    payload.signals.length > 0
-      ? payload.signals
-          .map((s) => `  - [${s.direction}] ${s.label}`)
-          .join("\n")
-      : "  (none)";
 
   const existingTensions =
     payload.topTensions.length > 0
       ? payload.topTensions.map((t) => `  - ${t}`).join("\n")
       : "  (none)";
 
-  return `You are TERROIR's cross-graph fault line detector. Your task is to surface structural tensions that only become visible when holding the full hub topology simultaneously — not tensions inside any single document.
+  return `You are TERROIR's cross-graph fault line VOICER. Structural detection has already been done in code. Your only job is to put precise, embodied language to each structural pattern below. Do NOT discover new patterns. Do NOT recite member counts or relationship numbers as if they were the insight — the numbers are context, the meaning is your output.
 
 WHAT TERROIR IS:
-An organisational listening tool that builds a knowledge graph from documents. Entities belong to hub categories (Domain, Capability, Culture, etc.). The topology below shows which hubs are dense, which are thin, where connections cross hub boundaries, and where evaluative signals are pulling.
+An organisational listening tool that builds a knowledge graph from documents. Entities belong to hub categories (Domain, Capability, Culture, etc.).
 
 PROJECT CONTEXT:
 - Sector: ${payload.brief.sector ?? "not specified"}
 - Org size: ${payload.brief.orgSize ?? "not specified"}
 - Discovery goal: ${payload.brief.discoveryGoal ?? "not specified"}
-- Total entities: ${payload.totalEntities} (${payload.emergentCount} emergent / isolated)
-- Total relationships: ${payload.totalRelationships}
 
-HUB TOPOLOGY:
-${hubSummary}
+CODE-DETECTED STRUCTURAL PATTERNS (voice each one — exactly ${patterns.length}, no more, no fewer):
+${patternBlock}
 
-CROSS-HUB CONNECTIONS (semantic bridges between hubs):
-${crossHubSummary}
+SOMATIC FRAME (what each pattern means as organisational felt-sense):
+- contracted: the org is pulling inward, playing small, staying close to what it already knows.
+- blocked: stagnation across hubs; the same friction repeating with no path to resolve.
+- pulled: attention scattered, concepts multiplying faster than they integrate.
 
-EVALUATIVE SIGNALS (what the org is moving toward/away from):
-${signalSummary}
-
-EXISTING LOCAL TENSIONS (already captured — do NOT re-flag these):
+EXISTING LOCAL TENSIONS (already captured — do not restate the meaning of these):
 ${existingTensions}
 
-YOUR DIAGNOSTIC FRAME — three somatic patterns:
+FOR EACH numbered pattern above, write exactly one fault line that:
+1. Echoes that pattern's number as "index" — this is how your wording is matched back to its hubs, so do not skip, reorder, merge, or invent indices.
+2. Describes the structural reality in embodied, concrete language ("the org is X", never "the org should Y")
+3. Names what is at stake — the organisational future the pattern is foreclosing or protecting
+4. Leads with the meaning, not the arithmetic. Reference a number only if it sharpens the stake, never as the point itself.
 
-CONTRACTED: The organisation is pulling inward — playing small, staying close to what it already knows. Indicators: one or two hubs dominate the graph while others are thin or empty; evaluative signals are protecting rather than moving toward; high emergent count with few cross-hub bridges; the org's vocabulary loops around the same cluster of concepts without expanding outward.
+The hubs are already fixed by code — you supply only the language and the matching index, never the hubs. Output exactly ${patterns.length} objects, one per numbered pattern.
 
-BLOCKED: Stagnation across multiple hubs — no forward movement, the same structural pattern repeating. Indicators: two or more hubs have high local tension counts; cross-hub connections exist but carry low relationship counts (shallow bridges, not real integration); evaluative signals pulling in opposite directions across different hubs; the org keeps naming the same challenge in different documents without resolution. Something needs to give for development to continue.
+GOOD (meaning-first):
+{ "index": 1, "description": "The org knows its field deeply but keeps that knowledge from becoming capability — it is safer to stay expert than to be tested, so the bridge that would turn knowing into doing never gets built.", "somaticPattern": "contracted" }
 
-PULLED: Attention scattered across multiple directions without value concentration. Indicators: high emergent count relative to total entities (method-over-value); many cross-hub connections but shallow (breadth without depth); evaluative signals span incompatible temporal horizons (operational and foundational simultaneously); the capability and domain hubs are weakly connected while emergent entities multiply.
-
-TASK:
-Identify 2–4 cross-graph fault lines using the topology above. Each fault line must:
-1. Be visible ONLY by holding two or more hubs simultaneously — not from any single document
-2. Name the specific hubs on each side of the conflict
-3. Be described as a structural reality, not a recommendation ("the org is X", not "the org should Y")
-4. Use the somatic pattern label (contracted / blocked / pulled) that best characterises the organisational felt-sense
-
-Hard limits:
-- Maximum 4 fault lines. Many topology profiles will only warrant 2. Zero is not valid — if there are entities in the graph there are structural patterns worth naming.
-- Do NOT invent tensions. Every fault line must be derivable from the numbers above.
-- Do NOT re-flag any tension already listed under EXISTING LOCAL TENSIONS.
-- The description must name the specific hubs involved and the mechanism of conflict. Generic descriptions ("there is tension between capability and culture") are rejected.
-
-GOLD EXAMPLES (logistics startup context — adapt to actual sector):
-
-Example — CONTRACTED:
-{
-  "description": "The Domain hub (18 members, 12 internal connections) is densely self-referential while the Capability hub has only 3 members and 1 cross-hub connection to Domain — the org knows its field deeply but is not building the structural bridges needed to translate that knowledge into capability.",
-  "somaticPattern": "contracted",
-  "relatedHubSlugs": ["domain", "capability"]
-}
-
-Example — BLOCKED:
-{
-  "description": "The Culture hub and the Process hub each carry 4 local tensions, and the single cross-hub connection between them is the lowest-weight bridge in the graph — the org's values and its operating procedures are not in contact with each other, so the same friction surfaces in every document without resolution.",
-  "somaticPattern": "blocked",
-  "relatedHubSlugs": ["culture", "process"]
-}
-
-Example — PULLED:
-{
-  "description": "31 of 87 entities are emergent (isolated), while the Capability and Domain hubs have only 2 cross-hub connections between them — the organisation is generating concepts faster than it can integrate them, and the gap between what it can do and what it knows keeps widening.",
-  "somaticPattern": "pulled",
-  "relatedHubSlugs": ["capability", "domain"]
-}
+BAD (arithmetic-first — rejected):
+{ "index": 1, "description": "The Domain hub has 18 members and 12 internal connections while Capability has 3 members.", "somaticPattern": "contracted" }
 
 Respond with valid JSON only — no markdown, no code blocks:
 {
   "faultLines": [
     {
-      "description": "string — specific, structural, names hubs and mechanism",
-      "somaticPattern": "contracted|blocked|pulled",
-      "relatedHubSlugs": ["hub-slug-1", "hub-slug-2"]
+      "index": 1,
+      "description": "string — meaning-first, names the stake",
+      "somaticPattern": "contracted|blocked|pulled"
     }
   ]
 }`;
@@ -1625,7 +1579,12 @@ export async function detectMetaTensions(
   payload: import("@/lib/topology").TopologyPayload,
   hubNodes: import("@/types").GraphNode[]
 ): Promise<import("@/types").TensionMarker[]> {
-  const prompt  = buildMetaTensionPrompt(payload);
+  // ── Detection happens in code, not in the model ───────────────────────────
+  // Zero candidates → a thin or quiet graph. Return silently, never call Gemini.
+  const patterns = detectStructuralPatterns(payload);
+  if (patterns.length === 0) return [];
+
+  const prompt  = buildMetaTensionPrompt(patterns, payload);
   const raw     = await callGemini(prompt, 8192, false, true); // no JSON mode, no thinking
   const rawJson = stripJsonFences(raw);
 
@@ -1647,15 +1606,23 @@ export async function detectMetaTensions(
     slugToId[slug] = hub.id;
   }
 
-  // Convert fault lines to TensionMarkers — drop any with unresolvable hub slugs
+  // Convert voiced fault lines to TensionMarkers. Hubs come ONLY from the
+  // code-detected pattern, matched by the model's echoed `index` (not array
+  // position) — so a reordered, dropped, or over-emitted response can never
+  // pin a description to the wrong hubs or smuggle in a model-invented fault
+  // line. The model supplies language; code owns which hubs are at stake.
   const tensions: import("@/types").TensionMarker[] = [];
+  const usedIndices = new Set<number>();
   for (const fl of parsed.faultLines) {
-    if (!fl.description || !fl.relatedHubSlugs?.length) continue;
+    if (!fl.description || typeof fl.index !== "number") continue;
 
-    const relatedNodeIds = fl.relatedHubSlugs
+    const pattern = patterns[fl.index - 1]; // 1-based
+    if (!pattern || usedIndices.has(fl.index)) continue; // out-of-range or duplicate
+    usedIndices.add(fl.index);
+
+    const relatedNodeIds = pattern.hubSlugs
       .map((slug) => slugToId[slug])
       .filter(Boolean) as string[];
-
     if (relatedNodeIds.length === 0) continue;
 
     tensions.push({

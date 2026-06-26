@@ -10,15 +10,14 @@ import { supabase } from "@/lib/supabase";
  * This is a dedicated endpoint — intentionally separate from saveOntology —
  * so reflect writes are immediate and include a server-stamped `reflected_at`.
  *
- * Body: { signalId, projectId, relevanceScore?, intensityScore?, userNote? }
+ * Body: { signalId, projectId, resonance?, userNote? }
  * Returns: { ok: true, reflectedAt: string }
  */
 export async function PATCH(req: NextRequest) {
   let body: {
     signalId: string;
     projectId: string;
-    relevanceScore?: number | null;
-    intensityScore?: number | null;
+    resonance?: "dissonant" | "equivocal" | "resonant" | null;
     userNote?: string | null;
   };
 
@@ -28,7 +27,7 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { signalId, projectId, relevanceScore, intensityScore, userNote } = body;
+  const { signalId, projectId, resonance, userNote } = body;
 
   if (!signalId || !projectId) {
     return NextResponse.json(
@@ -41,9 +40,8 @@ export async function PATCH(req: NextRequest) {
   const patch: Record<string, unknown> = {
     reflected_at: new Date().toISOString(), // server-stamped
   };
-  if (relevanceScore !== undefined) patch.relevance_score = relevanceScore;
-  if (intensityScore !== undefined) patch.intensity_score = intensityScore;
-  if (userNote !== undefined)       patch.user_note = userNote;
+  if (resonance !== undefined) patch.resonance = resonance;
+  if (userNote !== undefined)  patch.user_note = userNote;
 
   const { error } = await supabase
     .from("evaluative_signals")

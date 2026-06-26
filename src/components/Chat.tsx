@@ -8,6 +8,7 @@ import SynthesisResults from "./SynthesisResults";
 import type {
   ChatMessage as ChatMessageType,
   EvaluativeSignal,
+  Resonance,
   GraphState,
   GraphUpdate,
   SynthesisResult,
@@ -37,7 +38,7 @@ interface ChatProps {
    */
   onSignalReflect?: (
     signalId: string,
-    updates: Partial<Pick<EvaluativeSignal, "relevanceScore" | "intensityScore" | "reflectedAt" | "userNote" | "sharingScope">>
+    updates: Partial<Pick<EvaluativeSignal, "resonance" | "reflectedAt" | "userNote" | "sharingScope">>
   ) => void;
   /** Called when the user resolves a tension in the Reflect tab. */
   onTensionResolve?: (tensionId: string) => void;
@@ -65,43 +66,47 @@ const DIRECTION_ICON: Record<string, string> = {
   protecting: "◆",
 };
 
-// ── ScorePicker ───────────────────────────────────────────────────────────────
-// Renders a row of 5 clickable dots. Filled dots = selected score and below.
-// Hover preview: hovering dot N temporarily shows N filled dots.
-function ScorePicker({
-  labelKey,
+// ── ResonancePicker ───────────────────────────────────────────────────────────
+// Three-state resonance verdict: dissonant / equivocal / resonant. Replaces the
+// old relevance × intensity dials. Dissonant is information (mis-voiced — re-voice
+// it), not a low score, so it gets its own visible state rather than an empty one.
+const RESONANCE_OPTIONS: { value: Resonance; label: string; title: string; color: string }[] = [
+  { value: "dissonant", label: "D", title: "Dissonant — rings false or mis-voiced; re-voice it", color: "#b45309" },
+  { value: "equivocal", label: "E", title: "Equivocal — partly true, not yet settled",           color: "#a8a29e" },
+  { value: "resonant",  label: "R", title: "Resonant — rings true against the field",             color: "#4d7c0f" },
+];
+
+function ResonancePicker({
   value,
   onChange,
 }: {
-  labelKey: string;
-  value: number | null | undefined;
-  onChange: (score: number) => void;
+  value: Resonance | null | undefined;
+  onChange: (value: Resonance) => void;
 }) {
-  const t = useTranslations();
-  const label = t(labelKey as Parameters<typeof t>[0]);
-  const [hovered, setHovered] = useState<number | null>(null);
-  // Display: use hover preview while hovering, otherwise show saved value
-  const display = hovered ?? value ?? 0;
-
   return (
     <div className="flex items-center gap-1.5">
-      <span className="text-[10px] text-stone-400 w-16 shrink-0">{label}</span>
+      <span className="text-[10px] text-stone-400 w-16 shrink-0">Resonance</span>
       <div className="flex gap-1">
-        {[1, 2, 3, 4, 5].map((n) => (
-          <button
-            key={n}
-            onClick={() => onChange(n)}
-            onMouseEnter={() => setHovered(n)}
-            onMouseLeave={() => setHovered(null)}
-            className="w-4 h-4 flex items-center justify-center"
-            aria-label={`${label} ${n} of 5`}
-          >
-            <div
-              className="w-2 h-2 rounded-full transition-colors duration-100"
-              style={{ backgroundColor: n <= display ? "#78716c" : "#d6d3d1" }}
-            />
-          </button>
-        ))}
+        {RESONANCE_OPTIONS.map((opt) => {
+          const selected = value === opt.value;
+          return (
+            <button
+              key={opt.value}
+              onClick={() => onChange(opt.value)}
+              title={opt.title}
+              aria-label={opt.title}
+              aria-pressed={selected}
+              className="w-5 h-5 rounded text-[10px] font-semibold flex items-center justify-center border transition-colors"
+              style={{
+                borderColor: selected ? opt.color : "#e7e5e4",
+                backgroundColor: selected ? opt.color : "transparent",
+                color: selected ? "#ffffff" : "#a8a29e",
+              }}
+            >
+              {opt.label}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -131,7 +136,7 @@ function SignalCard({
 }: {
   signal: EvaluativeSignal;
   projectId: string | null;
-  onReflect: (updates: Partial<Pick<EvaluativeSignal, "relevanceScore" | "intensityScore" | "reflectedAt" | "userNote" | "sharingScope">>) => void;
+  onReflect: (updates: Partial<Pick<EvaluativeSignal, "resonance" | "reflectedAt" | "userNote" | "sharingScope">>) => void;
 }) {
   const t = useTranslations();
   const [expanded, setExpanded] = useState(false);
@@ -144,22 +149,19 @@ function SignalCard({
     setNoteOpen(!!signal.userNote);
   }, [signal.userNote]);
 
-  /** Persists a score change to Supabase and notifies the parent. */
-  const saveScore = async (
-    field: "relevanceScore" | "intensityScore",
-    score: number
-  ) => {
+  /** Persists a resonance verdict to Supabase and notifies the parent. */
+  const saveResonance = async (value: Resonance) => {
     const reflectedAt = new Date().toISOString();
     // Optimistic update to parent graphState first
-    onReflect({ [field]: score, reflectedAt });
+    onReflect({ resonance: value, reflectedAt });
 
     // Fire-and-forget persist — server stamps its own reflected_at
     if (projectId) {
       fetch("/api/reflect", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ signalId: signal.id, projectId, [field]: score }),
-      }).catch((err) => console.warn("[reflect] score save failed (non-fatal):", err));
+        body: JSON.stringify({ signalId: signal.id, projectId, resonance: value }),
+      }).catch((err) => console.warn("[reflect] resonance save failed (non-fatal):", err));
     }
   };
 
@@ -182,7 +184,7 @@ function SignalCard({
     }
   };
 
-  const isRated = signal.relevanceScore != null || signal.intensityScore != null;
+  const isRated = signal.resonance != null;
 
   return (
     <div
@@ -253,17 +255,11 @@ function SignalCard({
         </div>
       )}
 
-      {/* Score pickers */}
+      {/* Resonance verdict */}
       <div className="space-y-1 pl-5">
-        <ScorePicker
-          labelKey="reflect.signals.relevance"
-          value={signal.relevanceScore}
-          onChange={(score) => saveScore("relevanceScore", score)}
-        />
-        <ScorePicker
-          labelKey="reflect.signals.intensity"
-          value={signal.intensityScore}
-          onChange={(score) => saveScore("intensityScore", score)}
+        <ResonancePicker
+          value={signal.resonance}
+          onChange={(value) => saveResonance(value)}
         />
       </div>
 
@@ -835,7 +831,7 @@ export default function Chat({
                   <span className="ml-1.5 normal-case font-normal">
                     — {t("reflect.signals.rated", {
                       rated: graphState.evaluativeSignals.filter(
-                        (s) => s.relevanceScore != null || s.intensityScore != null
+                        (s) => s.resonance != null
                       ).length,
                       total: graphState.evaluativeSignals.length,
                     })}

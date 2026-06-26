@@ -773,9 +773,8 @@ export async function loadOntology(projectId: string): Promise<GraphState> {
     temporalHorizon: row.temporal_horizon ?? null,
     // Graph connections — from junction table
     relatedNodeIds: signalNodeMap[row.id] ?? [],
-    // Reflect tab scores — nullable until the user rates the signal
-    relevanceScore: row.relevance_score ?? null,
-    intensityScore: row.intensity_score ?? null,
+    // Reflect verdict — nullable until the user judges the signal
+    resonance: row.resonance ?? null,
     reflectedAt: row.reflected_at ?? null,
     userNote: row.user_note ?? null,
     sharingScope: row.sharing_scope ?? 'private',
@@ -907,9 +906,8 @@ export async function saveOntology(projectId: string, state: GraphState): Promis
         threshold_proximity: s.thresholdProximity ?? null,
         at_cost_of: s.atCostOf ?? null,
         temporal_horizon: s.temporalHorizon ?? null,
-        // Preserve reflect scores — null means unrated, not "clear existing value"
-        relevance_score: s.relevanceScore ?? null,
-        intensity_score: s.intensityScore ?? null,
+        // Preserve reflect verdict — null means unjudged, not "clear existing value"
+        resonance: s.resonance ?? null,
         reflected_at: s.reflectedAt ?? null,
         user_note: s.userNote ?? null,
         sharing_scope: s.sharingScope ?? 'private',

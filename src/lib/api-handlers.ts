@@ -21,7 +21,8 @@ import {
   logSession,
 } from "./supabase";
 import { buildProjectBundle } from "./export";
-import { classifyDocuments, extractOntologyWithGemini, runGeminiSynthesis, synthesizeAcrossProjects } from "./gemini";
+import { classifyDocuments, extractOntologyWithGemini, runGeminiSynthesis, synthesizeAcrossProjects, detectMetaTensions } from "./gemini";
+import { buildTopologyPayload } from "./topology";
 import { embedText } from "./embeddings";
 import { assertScope, assertProject, type AuthContext } from "./api-auth";
 import type { ProjectBrief, GraphNode, EvaluativeSignal, AbstractionLayer, SharingScope } from "@/types";
@@ -392,7 +393,8 @@ export async function handleGetEvaluativeField(
     atCostOf: s.atCostOf,
     thresholdProximity: s.thresholdProximity,
     horizon: s.temporalHorizon,
-    verified: Boolean(s.reflectedAt),
+    resonance: s.resonance ?? null,
+    verified: Boolean(s.resonance),
   });
 
   return {
@@ -405,6 +407,56 @@ export async function handleGetEvaluativeField(
     },
     decisionPoints: signals.filter((s) => (s.thresholdProximity ?? 0) >= 4).map(view), // corridors closing
     foundational: signals.filter((s) => s.temporalHorizon === "foundational").map(view),
-    verifiedRatio: `${signals.filter((s) => s.reflectedAt).length}/${signals.length}`,
+    verifiedRatio: `${signals.filter((s) => s.resonance).length}/${signals.length}`,
+  };
+}
+
+// ── detect_meta_tensions (Move 6) ──────────────────────────────────────────────
+// Cross-graph fault line detection. Holds the full hub topology at once and
+// surfaces structural tensions invisible to any single document. Detection is
+// deterministic (topology thresholds in detectStructuralPatterns); Gemini only
+// VOICES the candidates. WRITES to the graph: replaces any prior cross-graph
+// tensions with the fresh read, leaving local tensions untouched. Without this
+// pass, the faultLines array that surface_tensions reads stays empty.
+export async function handleDetectMetaTensions(ctx: AuthContext, projectId: string) {
+  assertScope(ctx, "write"); // persists tensions to the graph — gate on write, not synthesis
+  assertProject(ctx, projectId);
+
+  const [graph, project] = await Promise.all([
+    loadOntology(projectId),
+    getProject(projectId),
+  ]);
+
+  const hubNodes = graph.nodes.filter((n) => n.is_hub === true);
+  if (hubNodes.length === 0) {
+    throw new Error("No hub nodes found — run extraction first.");
+  }
+
+  const brief = project?.metadata?.brief as ProjectBrief | undefined;
+  const payload = buildTopologyPayload(graph, brief);
+  const metaTensions = await detectMetaTensions(payload, hubNodes);
+
+  // Replace existing cross-graph tensions with the fresh read; keep local ones.
+  const localTensions = graph.tensions.filter((t) => (t.scope ?? "local") === "local");
+  await saveOntology(projectId, { ...graph, tensions: [...localTensions, ...metaTensions] });
+
+  logSession({
+    project_id: projectId,
+    type: "synthesis",
+    agent: "gemini",
+    summary: `MCP detect_meta_tensions — ${metaTensions.length} cross-graph fault lines`,
+    raw_output: { faultLineCount: metaTensions.length },
+  }).catch((err) => console.warn("[api-handlers] session log failed:", err));
+
+  const labelById = new Map(graph.nodes.map((n) => [n.id, n.label]));
+  return {
+    projectId,
+    faultLineCount: metaTensions.length,
+    faultLines: metaTensions.map((t) => ({
+      id: t.id,
+      description: t.description,
+      between: t.relatedNodeIds.map((id) => labelById.get(id) ?? "(merged)"),
+      scope: t.scope ?? "cross-graph",
+    })),
   };
 }
