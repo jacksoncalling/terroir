@@ -371,6 +371,7 @@ Required for every gradient:
     · "Moving toward X, at the cost of Y"
     · "Protecting X from erosion by Y"
     · "Pulling away from X, opening exposure to Y"
+    · "Leaving X behind, freeing Y"
     · "Holding the line on X under pressure from Y"
   The label must be self-contained: a reader who hasn't seen the document should understand both what is moving and what is being traded off.
 - "direction" — toward | away_from | protecting
@@ -382,7 +383,7 @@ Required for every gradient:
 - "source" — the specific passage (1–2 sentences max) that revealed this gradient. Must be quoted or closely paraphrased from the document.
 
 Test each candidate with these three questions. If any answer is "no," do not extract:
-1. Can I name what is being moved toward or protected?
+1. Can I name what is being moved toward, left behind, or protected?
 2. Can I name what is being given up as a consequence?
 3. Can I name a threshold — even roughly — that this gradient is approaching or sitting against?
 
@@ -424,16 +425,16 @@ Example 3 — Trust erosion gradient:
   "source": "Shipper trust in AI-generated dispatch erodes after a single wrong routing call. It isn't cumulative — one strike and the dispatcher is cut out of the decision loop."
 }
 
-Example 4 — Permission gradient:
+Example 4 — Generative release gradient (a healthy away_from: leaving something behind frees energy, and still names a cost):
 {
-  "label": "Holding the line on fleet-manager autonomy under pressure from procurement oversight",
-  "direction": "protecting",
+  "label": "Leaving manual dispatch behind, freeing engineering time for the integration layer",
+  "direction": "away_from",
   "intensity": 4,
   "threshold_proximity": 3,
-  "at_cost_of": "speed of adoption above €15k/month — larger commitments drop into a 6-week legal cycle",
-  "temporal_horizon": "tactical",
-  "related_entity_labels": ["Fleet Manager Role", "Procurement Review Process"],
-  "source": "Fleet managers can authorise new tooling up to €15k/month without procurement; anything above triggers a six-week review that kills momentum."
+  "at_cost_of": "the reliability of a human-checked process the two founders already trust",
+  "temporal_horizon": "strategic",
+  "related_entity_labels": ["Manual Dispatch", "Fleet Integration Layer"],
+  "source": "The founders agreed to stop hand-tuning dispatches so the two of them could put that time into the integration layer instead."
 }
 
 Counter-example — DO NOT extract this (declared value without stakes):
@@ -654,7 +655,12 @@ function assembleGraph(
           {
             id: uuidv4(),
             label: s.label,
-            direction: (s.direction as "toward" | "away_from" | "protecting") || "toward",
+            direction: ((): "toward" | "away_from" | "protecting" => {
+              const d = s.direction;
+              if (d === "toward" || d === "away_from" || d === "protecting") return d;
+              console.warn(`[extract] signal "${s.label}" had ${d ? `unexpected direction "${d}"` : "no direction"}; defaulting to "toward"`);
+              return "toward";
+            })(),
             strength: resolvedIntensity,
             intensity: resolvedIntensity,
             thresholdProximity: s.threshold_proximity ?? null,
@@ -1467,14 +1473,15 @@ export async function enrichSignalsWithTopology(
     throw new Error("enrichSignalsWithTopology: response missing required fields");
   }
 
-  // Sanitise directions — fall back to "toward" if Gemini returns something unexpected
+  // Sanitise directions — preserve Gemini's value when valid; log (never silently rewrite) when not.
   const validDirections = new Set(["toward", "away_from", "protecting"]);
-  parsed.enrichedSignals = parsed.enrichedSignals.map((s) => ({
-    ...s,
-    direction: validDirections.has(s.direction)
-      ? (s.direction as "toward" | "away_from" | "protecting")
-      : "toward",
-  }));
+  parsed.enrichedSignals = parsed.enrichedSignals.map((s) => {
+    if (validDirections.has(s.direction)) {
+      return { ...s, direction: s.direction as "toward" | "away_from" | "protecting" };
+    }
+    console.warn(`[enrich] signal "${s.id}" had unexpected direction "${s.direction}"; defaulting to "toward"`);
+    return { ...s, direction: "toward" as const };
+  });
 
   return parsed;
 }
