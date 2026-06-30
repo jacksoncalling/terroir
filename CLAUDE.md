@@ -33,30 +33,25 @@ Read `.claude/plans/` at session start if working on a named feature.
 
 ---
 
-## Current State — Updated 2026-06-08
+## Current State — Updated 2026-06-30
 
 ### What's working
-- **MCP evaluative read tools (Move 5) — live & validated.** `surface_tensions` (tensions resolved to entity labels; local vs cross-graph fault lines) and `get_evaluative_field` (signals as directional gradients with costs, decision-points, verified ratio) — the evaluative layer `query_graph` can't reach. Committed: branch `feat/mcp-evaluative-read-tools` @ `bf58b0c`.
-- **`mcp-server` is now its own git repo** (root-commit `1c66a7a`), extracted from an accidental home-dir git root. Thin RPC shell over `terroir/src/lib`; `npm run build` + Claude Code restart to load new tools.
-- **Architecture decided — federate, don't nest:** Step Into More = brand · Jackson Calling = identity · each offering its own graph; `commons-synthesis` maps the couplings (correlation, not containment).
-- **Empirical (Step Into More):** `integrate` merges duplicates + reassigns hubs but adds **0 relationships** in a single-source graph — relationships are born in *extraction*. The connectivity that matters is the **tension + signal field**, not edges.
-- Carry-over (all live): 3-panel editor on Vercel · 3 presets · hub nodes as real entities (`belongs_to_hub`) · language-consistent extraction · two-pass Sonnet bridge · structured tension extraction · Terroir v1 API (7 endpoints, SHA-256 hashed bearer tokens) · MCP server end-to-end · `/project` command · auth prefers `SUPABASE_SERVICE_KEY` · Canal migrated to `/api/v1/` · visual-language features (node size, jagged border, session delta, gradient signals, bilingual UI, meta-tensions, winemaker's reading, signal dedup, filesystem export, public read endpoint).
+- **3-panel editor live on Vercel** — 3 presets, hub nodes as real entities (`belongs_to_hub`), language-consistent extraction, two-pass Sonnet bridge, structured tension extraction, Terroir v1 API (SHA-256 hashed bearer tokens), MCP server end-to-end, evaluative read tools (`surface_tensions`, `get_evaluative_field`), `detect_meta_tensions` (Move 6, deterministic detection), full visual-language set.
+- **`away_from` grammar fix shipped (2026-06-30).** The signal grammar structurally suppressed `away_from`: the label-template menu and few-shot examples both skewed to `protecting`, `away_from` was framed only as loss/exposure, the extraction gate never named "left behind", and two paths silently coerced unexpected directions to `"toward"`. Fixed in `gemini.ts` + `signal-grammar.md` (kept in sync), committed `94992da` (terroir) / `5338ebf` (mcp-server), deploying. **Impact unmeasured** — the experiment is pending (needs MCP restart + re-ingest).
+- **Empirical read of Step Into More 2** (this session): 18 protecting / 11 toward / 0 away_from. Heavily defensive field; the 0 away_from is what prompted the grammar fix. General caution: a "0 of category X" in the field may be the extraction grammar, not the world.
+- **Carry-over decisions (still hold):** federate, don't nest — Step Into More = brand · Jackson Calling = identity · each its own graph; `commons-synthesis` maps the couplings. `integrate` adds **0 relationships** in a single-source graph (relationships are born in *extraction*); connectivity lives in the tension + signal field, not edges. `mcp-server` is its own git repo (`1c66a7a`); `npm run build` + Claude Code restart to load tool/lib changes.
 
-### Known bugs
-- **`integrate` doesn't remap `tensions[].relatedNodeIds` after merges** → dangling refs (read tools surface `(merged)`). Fix task spawned 2026-06-08.
-- **⚠️ Accidental `.git` at home dir `C:/Users/Max Mustermann`** — tracks the entire home folder (`.ssh`, `NTUSER.DAT`, `.claude.json` tokens). **Never run git from a home-rooted shell;** remove the stray repo after checking its log (destructive — Joshua's call). Detail in `.claude/notes/2026-06-08-session-scribe.md` §6.
-- **Vercel `/api/v1/*` needs `SUPABASE_SERVICE_KEY` in env** or RLS rejects valid tokens (carry-over — verify on next deploy).
-- **Entity type UUID bug** — type IDs use slugs not UUIDs → `entity_type_configs` upsert returns 400. Non-fatal.
-- **Realtime unconfirmed** — `ontology_relationships` may not be published to Realtime.
-- **`enrichState` stale after external signal change** — needs `useEffect` reset on signal count change.
-- **`window.confirm` for reprocess is EN-only** — `ProjectBrief.tsx:76` hardcoded English.
-- **`~/.claude/mcp.json` is a dead file** — not read by Claude Code; safe to delete. Real config: `~/Terroir/.mcp.json`.
+### Known bugs / technical debt
+- **⚠️ MCP `add_source` does not persist documents (NEEDS SPEC).** `handleAddSource` (`api-handlers.ts`) extracts via Gemini and saves the graph but never writes `documents` / `document_chunks`. Consequences: `/api/reprocess` on an agent-fed project deletes the graph and rebuilds from nothing (do NOT run on Step Into More 2); `query_graph` (vector search) returns empty. The seam: Terroir was built for human upload, not agent ingestion. Spec: should the courier path persist the raw source so reprocess + vector search work uniformly across both ingestion paths?
+- **Distributed-MCP pilot — Phase 1 in progress (uncommitted WIP).** The remote-client split is the gate: the current MCP holds direct Supabase creds + Gemini key, so handing out the folder makes token scoping theater. New `/api/v1` routes (`tensions`, `evaluative-field`, `meta-tensions`), `remote.ts`, and a per-token spend-cap migration (008) are in the tree, not yet committed. Plan: `.claude/plans/distributed-mcp-pilot.md`.
+- **Carry-over actives:** `integrate` doesn't remap `tensions[].relatedNodeIds` after merges (dangling refs); ⚠️ accidental `.git` at home dir `C:/Users/Max Mustermann` (tracks `.ssh` / tokens — never run git from a home-rooted shell; removal is Joshua's call); Vercel `/api/v1/*` needs `SUPABASE_SERVICE_KEY`; entity-type UUID bug (non-fatal); Realtime on `ontology_relationships` unconfirmed; `enrichState` stale after external signal change; `window.confirm` reprocess is EN-only (`ProjectBrief.tsx:76`).
+- **GitHub repo renamed `terrior` → `terroir`;** local `origin` and CLAUDE.md links still use the old name (redirect works for now).
 
 ### What's next
-1. **Re-home personal topology SIM → Jackson Calling** — `.claude/plans/rehome-to-jackson-calling.md`. Decide JC hubs (fixed life-frame recommended) first; re-author via `add_source` + `integrate`; clean SIM in UI (no MCP delete tool yet).
-2. **Fix the tension `relatedNodeIds` remap bug** (spawned task) — restores integrity of the field the new read tools expose.
-3. **Move 3 — expose `integrate_graph(project_id)` on the MCP** (thin wrap of `/api/integrate`); then **Move 4** — expose the grammar as MCP instructions/resources.
-4. Carry-over: set `SUPABASE_SERVICE_KEY` in Vercel before next deploy · Canal prod smoke test (then drop `TERROIR_SUPABASE_URL` / `TERROIR_SUPABASE_ANON_KEY` from Render).
+1. **Run the `away_from` experiment** — restart Claude Code (reloads MCP `dist` with the fix), re-ingest the 26 curated Step Into More sources into a fresh project, compare the direction split to the baseline (18/11/0). `.claude/plans/away-from-experiment.md`.
+2. **Spec the `add_source` document-persistence gap** — decide whether the courier path writes documents + chunks so reprocess + vector search work for agent-fed projects. Related: dialogue extraction for the evaluative layer — route transcripts/dialogue to the Sonnet narrative path (`extract.ts`), which reads stakes better (observed 2026-06-16: 6 intuitions → 1 signal via the Gemini doc path). `.claude/plans/dialogue-extraction-for-evaluative-layer.md`.
+3. **Finish + commit Distributed-MCP Phase 1** — remote-client split, the 3 new `/api/v1` routes, the spend-cap migration; then mint a scoped token for the first pilot user.
+- Carry-over (not lost): re-home personal topology SIM → Jackson Calling (`.claude/plans/rehome-to-jackson-calling.md`); fix the `integrate` `relatedNodeIds` remap bug.
 
 ---
 
