@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authenticate, AuthError } from "@/lib/api-auth";
+import { authenticate } from "@/lib/api-auth";
 import { handleAddSource } from "@/lib/api-handlers";
+import { apiErrorResponse } from "@/lib/api-route-utils";
 
 // Gemini extraction can take up to 60s on large content
 export const maxDuration = 300;
@@ -56,14 +57,8 @@ export async function POST(
     const result = await handleAddSource(ctx, id, text, title);
     return NextResponse.json({ ok: true, data: result });
   } catch (err) {
-    if (err instanceof AuthError) {
-      return NextResponse.json({ ok: false, error: err.message }, { status: err.status });
-    }
     console.error("[ingest] error:", err);
-    return NextResponse.json(
-      { ok: false, error: err instanceof Error ? err.message : "Unknown error" },
-      { status: 500 }
-    );
+    return apiErrorResponse(err);
   }
 }
 

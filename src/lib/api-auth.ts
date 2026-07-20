@@ -44,6 +44,19 @@ async function sha256Hex(text: string): Promise<string> {
   return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+// Daily call budget per token. Generous enough for a real working session;
+// stops a runaway loop or accidental overnight ingest.
+const DAILY_CAP = 200;
+
+export class RateLimitError extends Error {
+  public readonly status = 429;
+  public readonly resetAt: string;
+  constructor(resetAt: string) {
+    super(`Daily limit of ${DAILY_CAP} calls reached. Resets at ${resetAt}.`);
+    this.resetAt = resetAt;
+  }
+}
+
 export async function authenticate(authHeader: string | null): Promise<AuthContext> {
   if (!authHeader?.startsWith("Bearer ")) {
     throw new AuthError(401, "Missing or malformed Authorization header");
@@ -55,7 +68,7 @@ export async function authenticate(authHeader: string | null): Promise<AuthConte
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from("api_tokens")
-    .select("id, name, scopes, project_scope, revoked_at")
+    .select("id, name, scopes, project_scope, revoked_at, usage_count, usage_reset_at")
     .eq("token_hash", hash)
     .single();
 
@@ -66,6 +79,29 @@ export async function authenticate(authHeader: string | null): Promise<AuthConte
   if (data.revoked_at) {
     throw new AuthError(401, "Token has been revoked");
   }
+
+  // Daily usage cap — reset window if expired, then check and increment.
+  const now = new Date();
+  const resetAt = data.usage_reset_at ? new Date(data.usage_reset_at) : null;
+  const windowExpired = !resetAt || resetAt <= now;
+
+  const newCount = windowExpired ? 1 : (data.usage_count ?? 0) + 1;
+  const newResetAt = windowExpired
+    ? new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString()
+    : data.usage_reset_at;
+
+  if (!windowExpired && (data.usage_count ?? 0) >= DAILY_CAP) {
+    throw new RateLimitError(data.usage_reset_at);
+  }
+
+  // Fire-and-forget — don't block the request on the update write.
+  supabase
+    .from("api_tokens")
+    .update({ usage_count: newCount, usage_reset_at: newResetAt })
+    .eq("id", data.id)
+    .then(({ error: updateErr }) => {
+      if (updateErr) console.warn("[api-auth] usage update failed:", updateErr.message);
+    });
 
   return {
     tokenId: data.id,

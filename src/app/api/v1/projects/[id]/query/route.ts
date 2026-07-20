@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authenticate, AuthError } from "@/lib/api-auth";
+import { authenticate } from "@/lib/api-auth";
 import { handleQueryGraph } from "@/lib/api-handlers";
+import { apiErrorResponse } from "@/lib/api-route-utils";
 
 export async function GET(
   req: NextRequest,
@@ -19,12 +20,6 @@ export async function GET(
     const result = await handleQueryGraph(ctx, id, q, count);
     return NextResponse.json({ ok: true, data: result });
   } catch (err) {
-    if (err instanceof AuthError) {
-      return NextResponse.json({ ok: false, error: err.message }, { status: err.status });
-    }
-    return NextResponse.json(
-      { ok: false, error: err instanceof Error ? err.message : "Unknown error" },
-      { status: 500 }
-    );
+    return apiErrorResponse(err);
   }
 }

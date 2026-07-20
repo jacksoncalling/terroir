@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# compiled js artifacts next to ts sources
+src/lib/*.js
+
+.vercel
+.env*
