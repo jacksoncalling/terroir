@@ -24,6 +24,17 @@ npx ts-node --skip-project scripts/mint-token.ts \
 
 The script prints the plaintext token once. Copy it immediately — it is not stored anywhere.
 
+### Verify the token is scoped to their project (before sending)
+
+The `--project` flag above is the only thing limiting a pilot user to their own project, and there is no second safety net. Confirm it took: using **their** token, list projects and check that exactly one comes back.
+
+```bash
+curl -s -H "Authorization: Bearer <their-token>" \
+  https://terroir-mu.vercel.app/api/v1/projects
+```
+
+Expected: only their project. If more than one comes back, the token was minted without `--project` and can read and write every project in Terroir. Revoke it (see below) and re-mint with the `--project` flag.
+
 To revoke a token later, run this in the Supabase SQL editor:
 
 ```sql
